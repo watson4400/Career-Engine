@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { stages } from "@/content";
 import { FadeIn } from "@/components/Motion";
 import { useProgress } from "@/components/ProgressProvider";
@@ -17,14 +17,13 @@ export default function ProgressPage() {
     noteFor,
     setCurrent,
   } = useProgress();
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [drafts, setDrafts] = useState<Record<string, string> | null>(null);
 
-  useEffect(() => {
-    if (!ready) return;
-    const next: Record<string, string> = {};
-    for (const stage of stages) next[stage.id] = noteFor(stage.id);
-    setDrafts(next);
-  }, [ready, noteFor]);
+  const values =
+    drafts ??
+    (ready
+      ? Object.fromEntries(stages.map((stage) => [stage.id, noteFor(stage.id)]))
+      : {});
 
   const completed = stages.filter((s) => isComplete(s.id)).length;
   const walkedKm = stages
@@ -102,11 +101,16 @@ export default function ProgressPage() {
                 <label className="mt-4 block">
                   <span className="sr-only">Note for stage {stage.number}</span>
                   <textarea
-                    value={drafts[stage.id] ?? ""}
+                    value={values[stage.id] ?? ""}
                     onChange={(e) =>
-                      setDrafts((d) => ({ ...d, [stage.id]: e.target.value }))
+                      setDrafts((current) => ({
+                        ...(current ?? values),
+                        [stage.id]: e.target.value,
+                      }))
                     }
-                    onBlur={() => saveNote(stage.id, drafts[stage.id] ?? "")}
+                    onBlur={() =>
+                      saveNote(stage.id, (drafts ?? values)[stage.id] ?? "")
+                    }
                     rows={2}
                     placeholder="A line from the day…"
                     className="focus-ring w-full resize-none rounded-xl border border-line bg-fog/60 px-3 py-2 text-sm text-granite placeholder:text-muted/70"

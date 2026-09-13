@@ -4,7 +4,6 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useState,
   type ReactNode,
@@ -30,18 +29,17 @@ type ProgressContextValue = {
 
 const ProgressContext = createContext<ProgressContextValue | null>(null);
 
-export function ProgressProvider({ children }: { children: ReactNode }) {
-  const [ready, setReady] = useState(false);
-  const [state, setState] = useState<ProgressState>({
-    currentStageId: "stage-1",
-    completedStageIds: [],
-    notes: [],
-  });
+const emptyState: ProgressState = {
+  currentStageId: "stage-1",
+  completedStageIds: [],
+  notes: [],
+};
 
-  useEffect(() => {
-    setState(loadProgress());
-    setReady(true);
-  }, []);
+export function ProgressProvider({ children }: { children: ReactNode }) {
+  const [state, setState] = useState<ProgressState>(() =>
+    typeof window === "undefined" ? emptyState : loadProgress(),
+  );
+  const [ready] = useState(() => typeof window !== "undefined");
 
   const isComplete = useCallback(
     (stageId: string) => state.completedStageIds.includes(stageId),

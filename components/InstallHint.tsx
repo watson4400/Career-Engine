@@ -1,18 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+
+function shouldShowInstallHint() {
+  if (typeof window === "undefined") return false;
+  const dismissed = sessionStorage.getItem("camino-install-dismissed");
+  const isStandalone =
+    window.matchMedia("(display-mode: standalone)").matches ||
+    ("standalone" in navigator &&
+      Boolean((navigator as Navigator & { standalone?: boolean }).standalone));
+  return !dismissed && !isStandalone;
+}
 
 export function InstallHint() {
-  const [visible, setVisible] = useState(false);
-
-  useEffect(() => {
-    const dismissed = sessionStorage.getItem("camino-install-dismissed");
-    const isStandalone =
-      window.matchMedia("(display-mode: standalone)").matches ||
-      ("standalone" in navigator &&
-        Boolean((navigator as Navigator & { standalone?: boolean }).standalone));
-    if (!dismissed && !isStandalone) setVisible(true);
-  }, []);
+  const [visible, setVisible] = useState(shouldShowInstallHint);
 
   if (!visible) return null;
 
