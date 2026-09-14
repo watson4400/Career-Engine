@@ -2,12 +2,15 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
+  getEventsForStop,
   getNuggetsForStop,
   getStageById,
   getStopBySlug,
   stops,
 } from "@/content";
+import { EventCard } from "@/components/EventCard";
 import { NuggetCard } from "@/components/NuggetCard";
+import { sortEventsByRelevance } from "@/lib/events";
 import { stopKindLabels } from "@/lib/labels";
 
 type Props = { params: Promise<{ slug: string }> };
@@ -30,6 +33,7 @@ export default async function StopPage({ params }: Props) {
 
   const stage = getStageById(stop.stageId);
   const related = getNuggetsForStop(stop.id);
+  const stopEvents = sortEventsByRelevance(getEventsForStop(stop.id));
 
   return (
     <main className="atmosphere min-h-dvh">
@@ -75,6 +79,35 @@ export default async function StopPage({ params }: Props) {
             <p className="mt-2 leading-relaxed text-granite-soft">
               {stop.practical}
             </p>
+          </section>
+        ) : null}
+
+        {stopEvents.length > 0 ? (
+          <section className="mt-12">
+            <div className="flex items-end justify-between gap-3">
+              <h2 className="font-display text-2xl text-granite">
+                Town events
+              </h2>
+              <Link
+                href="/events/"
+                className="focus-ring shrink-0 text-sm text-atlantic hover:text-atlantic-deep"
+              >
+                All events
+              </Link>
+            </div>
+            <p className="mt-2 max-w-prose text-sm text-muted">
+              Festivals and celebrations tied to this stop and its town.
+            </p>
+            <div className="mt-2">
+              {stopEvents.map((event, i) => (
+                <EventCard
+                  key={event.id}
+                  event={event}
+                  index={i}
+                  showTown={false}
+                />
+              ))}
+            </div>
           </section>
         ) : null}
 

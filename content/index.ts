@@ -22,4 +22,19 @@ export {
   getNuggetsForStage,
   getNuggetsForStop,
 } from "./nuggets";
-export type { Stage, Stop, Tip, Nugget, TipCategory } from "./schema";
+export {
+  townEvents,
+  getTownEventBySlug,
+  getTownEventById,
+  getEventsForStop,
+  getEventsForStage,
+} from "./events";
+export type {
+  Stage,
+  Stop,
+  Tip,
+  Nugget,
+  TipCategory,
+  TownEvent,
+  TownEventKind,
+} from "./schema";

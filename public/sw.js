@@ -1,7 +1,8 @@
-const CACHE = "camino-v1";
+const CACHE = "camino-v2";
 const PRECACHE = [
   "/",
   "/journey/",
+  "/events/",
   "/tips/",
   "/nuggets/",
   "/progress/",

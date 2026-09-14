@@ -48,6 +48,37 @@ export const stopSchema = z.object({
   nuggetIds: z.array(z.string()).default([]),
 });
 
+export const townEventKindSchema = z.enum([
+  "festival",
+  "celebration",
+  "pilgrimage",
+  "gastronomy",
+  "cultural",
+  "patron",
+]);
+
+export const townEventSchema = z.object({
+  id: z.string(),
+  slug: z.string(),
+  title: z.string(),
+  kind: townEventKindSchema,
+  /** Primary town/stop this event belongs to on the Camino Inglés. */
+  stopIds: z.array(z.string()).min(1),
+  stageIds: z.array(z.string()).default([]),
+  /** Inclusive ISO dates (YYYY-MM-DD) for the current season when known. */
+  startDate: z.string(),
+  endDate: z.string(),
+  whenLabel: z.string(),
+  townLabel: z.string(),
+  summary: z.string(),
+  body: z.string(),
+  practical: z.string().optional(),
+  /** True for traditional annual dates that recur every year. */
+  recurring: z.boolean().default(true),
+  /** Year confirmed for dated programmes (e.g. 2026 press dates). */
+  confirmedYear: z.number().int().optional(),
+});
+
 export const stageSchema = z.object({
   id: z.string(),
   slug: z.string(),
@@ -68,4 +99,6 @@ export type TipCategory = z.infer<typeof tipCategorySchema>;
 export type Tip = z.infer<typeof tipSchema>;
 export type Nugget = z.infer<typeof nuggetSchema>;
 export type Stop = z.infer<typeof stopSchema>;
+export type TownEventKind = z.infer<typeof townEventKindSchema>;
+export type TownEvent = z.infer<typeof townEventSchema>;
 export type Stage = z.infer<typeof stageSchema>;
