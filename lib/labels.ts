@@ -34,3 +34,12 @@ export const stopKindLabels: Record<string, string> = {
   sanctuary: "Sanctuary",
   landmark: "Landmark",
 };
+
+export const eventKindLabels: Record<string, string> = {
+  festival: "Festival",
+  celebration: "Celebration",
+  pilgrimage: "Pilgrimage",
+  gastronomy: "Gastronomy",
+  cultural: "Cultural",
+  patron: "Patron feast",
+};

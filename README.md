@@ -6,6 +6,7 @@ An offline-ready Progressive Web App for walking the **Camino Inglés** from Fer
 
 - Six classic stages (Ferrol → Santiago)
 - Stops with atmosphere, history, and practical notes
+- Town events: festivals, patron feasts, romerías, and food celebrations
 - Tips (credential, footing, weather, food, gear, etiquette)
 - Historical nuggets and curiosities
 - Local progress tracking and day notes (on-device only)
@@ -48,4 +49,4 @@ HTTPS is required for reliable service-worker / Add to Home Screen behaviour on 
 
 ## Content
 
-Curated route data lives in `content/` (`stages.ts`, `stops.ts`, `tips.ts`, `nuggets.ts`).
+Curated route data lives in `content/` (`stages.ts`, `stops.ts`, `events.ts`, `tips.ts`, `nuggets.ts`).

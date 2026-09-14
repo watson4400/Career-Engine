@@ -2,15 +2,18 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
+  getEventsForStage,
   getNuggetById,
   getStageBySlug,
   getStopById,
   getTipById,
   stages,
 } from "@/content";
+import { EventCard } from "@/components/EventCard";
 import { NuggetCard } from "@/components/NuggetCard";
 import { StopLink } from "@/components/StopLink";
 import { StageActions } from "@/components/StageActions";
+import { sortEventsByRelevance } from "@/lib/events";
 import { difficultyLabel, formatKm, tipCategoryLabels } from "@/lib/labels";
 
 type Props = { params: Promise<{ slug: string }> };
@@ -40,6 +43,10 @@ export default async function StagePage({ params }: Props) {
   const stageNuggets = stage.nuggetIds
     .map((id) => getNuggetById(id))
     .filter((n): n is NonNullable<typeof n> => Boolean(n));
+  const stageEvents = sortEventsByRelevance(getEventsForStage(stage.id)).slice(
+    0,
+    4,
+  );
 
   const index = stages.findIndex((s) => s.id === stage.id);
   const prev = index > 0 ? stages[index - 1] : null;
@@ -81,6 +88,27 @@ export default async function StagePage({ params }: Props) {
             ))}
           </div>
         </section>
+
+        {stageEvents.length > 0 ? (
+          <section className="mt-12">
+            <div className="flex items-end justify-between gap-3">
+              <h2 className="font-display text-2xl text-granite">
+                Events nearby
+              </h2>
+              <Link
+                href="/events/"
+                className="focus-ring shrink-0 text-sm text-atlantic hover:text-atlantic-deep"
+              >
+                All events
+              </Link>
+            </div>
+            <div className="mt-2">
+              {stageEvents.map((event, i) => (
+                <EventCard key={event.id} event={event} index={i} />
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         {stageTips.length > 0 ? (
           <section className="mt-12">

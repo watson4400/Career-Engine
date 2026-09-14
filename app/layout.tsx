@@ -23,7 +23,7 @@ export const metadata: Metadata = {
     template: "%s · Camiño",
   },
   description:
-    "An offline-ready pocket companion for the Camino Inglés from Ferrol to Santiago de Compostela — stages, sights, tips, and historical nuggets.",
+    "An offline-ready pocket companion for the Camino Inglés from Ferrol to Santiago de Compostela — stages, sights, town events, tips, and historical nuggets.",
   applicationName: "Camiño",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
