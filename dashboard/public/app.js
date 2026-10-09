@@ -9,7 +9,44 @@ function fmtMoney(n) {
 
 function fmtPct(n) {
   if (n == null || Number.isNaN(Number(n))) return "—";
-  return `${(Number(n) * 100).toFixed(2)}%`;
+  const v = Number(n) * 100;
+  const sign = v > 0 ? "+" : "";
+  return `${sign}${v.toFixed(2)}%`;
+}
+
+function fmtPnlUsd(n) {
+  if (n == null || Number.isNaN(Number(n))) return "—";
+  const v = Number(n);
+  const sign = v > 0 ? "+" : "";
+  return `${sign}${v.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+}
+
+function pnlClass(n) {
+  if (n == null || Number.isNaN(Number(n)) || Number(n) === 0) return "";
+  return Number(n) > 0 ? "up" : "down";
+}
+
+function sessionPnl(s) {
+  const summary = s.summary ?? s;
+  const result = summary?.result ?? summary;
+  let pnlPct = s.pnlPct ?? result?.pnlPct ?? summary?.pnlPct;
+  let pnlUsd = s.pnlUsd ?? result?.pnlUsd ?? summary?.pnlUsd;
+  const equity = s.equity ?? result?.equity ?? summary?.equity;
+  const start =
+    s.startingEquity ?? result?.startingEquity ?? summary?.startingEquity;
+
+  if (pnlUsd == null && equity != null && start != null) {
+    pnlUsd = Number(equity) - Number(start);
+  }
+  if (pnlPct == null && equity != null && start != null && Number(start) > 0) {
+    pnlPct = (Number(equity) - Number(start)) / Number(start);
+  }
+  if (pnlUsd == null && pnlPct != null && equity != null) {
+    // derive approx USD from pct when start unknown
+    const startEst = Number(equity) / (1 + Number(pnlPct));
+    if (Number.isFinite(startEst)) pnlUsd = Number(equity) - startEst;
+  }
+  return { pnlPct, pnlUsd };
 }
 
 function gate(label, state) {
@@ -29,11 +66,23 @@ function renderGates(status) {
       f.coinbaseDryRun ? "COINBASE dry-run" : "COINBASE live orders",
       f.coinbaseDryRun ? "on" : "off",
     ),
-    gate(status.killSwitch.armed ? "Kill switch ARMED" : "Kill switch disarmed", status.killSwitch.armed ? "warn" : "off"),
+    gate(
+      status.killSwitch.armed ? "Kill switch ARMED" : "Kill switch disarmed",
+      status.killSwitch.armed ? "warn" : "off",
+    ),
     gate(f.hasTypesafe ? "Jev key set" : "Jev key missing", f.hasTypesafe ? "on" : "warn"),
     gate(f.hasCoinbase ? "Coinbase key set" : "Coinbase key missing", f.hasCoinbase ? "on" : "warn"),
     gate(`Product ${f.productId}`, "on"),
   );
+}
+
+function renderPnl(pnlUsd, pnlPct) {
+  const el = $("stat-pnl");
+  const elPct = $("stat-pnl-pct");
+  el.className = `stat-value mono ${pnlClass(pnlUsd ?? pnlPct)}`;
+  elPct.className = `stat-sub mono ${pnlClass(pnlPct ?? pnlUsd)}`;
+  el.textContent = fmtPnlUsd(pnlUsd);
+  elPct.textContent = pnlPct == null ? "—" : fmtPct(pnlPct);
 }
 
 function renderLatest(status, book) {
@@ -44,21 +93,21 @@ function renderLatest(status, book) {
     $("latest-sub").textContent = "Run npm run paper or npm run coinbase:live";
     $("stat-equity").textContent = "—";
     $("stat-orders").textContent = "—";
-    $("stat-holds").textContent = "—";
+    renderPnl(null, null);
   } else {
     const mode = latest.mode ?? latest.summary?.mode ?? "session";
     $("latest-mode").textContent = String(mode);
+    const { pnlPct, pnlUsd } = sessionPnl(latest);
     const bits = [
       latest.id,
       latest.jev ? `jev:${latest.jev}` : null,
       latest.productId ? `product:${latest.productId}` : null,
       latest.brier != null ? `brier:${Number(latest.brier).toFixed(3)}` : null,
-      latest.pnlPct != null ? `pnl:${fmtPct(latest.pnlPct)}` : null,
     ].filter(Boolean);
     $("latest-sub").textContent = bits.join(" · ");
     $("stat-equity").textContent = fmtMoney(latest.equity);
-    $("stat-orders").textContent = String(latest.orders ?? "—");
-    $("stat-holds").textContent = String(latest.holds ?? "—");
+    $("stat-orders").textContent = `${latest.orders ?? "—"} / ${latest.holds ?? "—"}`;
+    renderPnl(pnlUsd, pnlPct);
     if (!selectedId) selectedId = latest.id;
   }
   if (book?.ok) {
@@ -75,13 +124,27 @@ function renderSessions(sessions) {
   for (const s of sessions.slice(0, 30)) {
     const li = document.createElement("li");
     if (s.id === selectedId) li.classList.add("active");
+    const { pnlPct, pnlUsd } = sessionPnl(s);
+    const pnlBit =
+      pnlUsd != null
+        ? ` · P&L ${fmtPnlUsd(pnlUsd)} (${fmtPct(pnlPct)})`
+        : pnlPct != null
+          ? ` · P&L ${fmtPct(pnlPct)}`
+          : "";
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.innerHTML = `<div class="sid">${s.id}</div><div class="muted">${s.mode ?? "—"} · orders ${s.orders ?? 0} · holds ${s.holds ?? 0}</div>`;
+    btn.innerHTML = `<div class="sid">${s.id}</div><div class="muted">${s.mode ?? "—"} · orders ${s.orders ?? 0} · holds ${s.holds ?? 0}${pnlBit}</div>`;
     btn.addEventListener("click", () => {
       selectedId = s.id;
       loadJournal(s.id);
       renderSessions(sessions);
+      // Update hero P&L to selected session
+      const { pnlPct: p, pnlUsd: u } = sessionPnl(s);
+      $("latest-mode").textContent = String(s.mode ?? "session");
+      $("latest-sub").textContent = s.id;
+      $("stat-equity").textContent = fmtMoney(s.equity);
+      $("stat-orders").textContent = `${s.orders ?? "—"} / ${s.holds ?? "—"}`;
+      renderPnl(u, p);
     });
     li.append(btn);
     ul.append(li);

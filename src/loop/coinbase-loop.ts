@@ -70,6 +70,7 @@ export async function runCoinbaseLoop(cfg: CoinbaseLoopConfig): Promise<Record<s
     const mid0 = (book0.bids[0]!.price + book0.asks[0]!.price) / 2;
     return client.portfolioSnapshot(mid0);
   })();
+  const startingEquity = portfolio.equity;
 
   for (let i = 0; i < cfg.candles; i++) {
     const book = await client.getBestBidAsk();
@@ -136,6 +137,8 @@ export async function runCoinbaseLoop(cfg: CoinbaseLoopConfig): Promise<Record<s
     }
   }
 
+  const pnlUsd = lastEquity - startingEquity;
+  const pnlPct = startingEquity > 0 ? pnlUsd / startingEquity : 0;
   return {
     mode: liveOrders ? "coinbase-live" : "coinbase-dry-run",
     jev: useLiveJev ? "live-jev" : "paper-trainer",
@@ -145,6 +148,9 @@ export async function runCoinbaseLoop(cfg: CoinbaseLoopConfig): Promise<Record<s
     blocks,
     escalations,
     equity: lastEquity,
+    startingEquity,
+    pnlUsd,
+    pnlPct,
     reasonCounts,
   };
 }

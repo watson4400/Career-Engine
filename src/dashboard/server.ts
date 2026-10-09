@@ -73,7 +73,17 @@ function listSessions() {
         equity:
           summary?.equity ??
           ((summary?.result as Record<string, unknown> | undefined)?.equity as number | undefined),
-        pnlPct: (summary?.result as Record<string, unknown> | undefined)?.pnlPct ?? summary?.pnlPct,
+        pnlPct:
+          (summary?.pnlPct as number | undefined) ??
+          ((summary?.result as Record<string, unknown> | undefined)?.pnlPct as number | undefined),
+        pnlUsd:
+          (summary?.pnlUsd as number | undefined) ??
+          ((summary?.result as Record<string, unknown> | undefined)?.pnlUsd as number | undefined),
+        startingEquity:
+          (summary?.startingEquity as number | undefined) ??
+          ((summary?.result as Record<string, unknown> | undefined)?.startingEquity as
+            | number
+            | undefined),
         brier: overnight?.brier ?? (summary?.overnight as Record<string, unknown> | undefined)?.brier,
         summary,
       };

@@ -170,6 +170,23 @@ main {
   font-weight: 600;
 }
 
+.stat-sub {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+
+.stat-pnl .stat-value.up,
+.stat-sub.up {
+  color: var(--ok);
+}
+
+.stat-pnl .stat-value.down,
+.stat-sub.down {
+  color: var(--danger);
+}
+
 .gates,
 .split > section {
   padding: 1.15rem 1.25rem;
