@@ -22,6 +22,15 @@ npm run coinbase:live     # live book + simulated orders unless gates flipped
 
 See `docs/ship/COINBASE_ADVANCED_SETUP.md`.
 
+### Local dashboard
+
+```bash
+npm run dashboard
+# open http://127.0.0.1:8787
+```
+
+Shows latest session, safety gates, Coinbase mid (if keys set), session list, and journal.
+
 ## Architecture
 
 | Layer | Role |

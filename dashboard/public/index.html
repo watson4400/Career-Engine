@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Career Engine — Ops</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Syne:wght@600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="atmosphere" aria-hidden="true"></div>
+    <header class="top">
+      <div class="brand-block">
+        <p class="brand">Career Engine</p>
+        <p class="tag">Ops console · Brain / Reflex</p>
+      </div>
+      <div class="top-meta">
+        <span id="clock" class="mono">—</span>
+        <span id="pulse" class="pulse" title="Auto-refresh">LIVE FEED</span>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero-status" aria-label="System status">
+        <div class="status-main">
+          <p class="eyebrow">Latest session</p>
+          <h1 id="latest-mode">—</h1>
+          <p id="latest-sub" class="sub">Waiting for session data…</p>
+        </div>
+        <div class="status-grid">
+          <article class="stat">
+            <span class="stat-label">Equity</span>
+            <span id="stat-equity" class="stat-value mono">—</span>
+          </article>
+          <article class="stat">
+            <span class="stat-label">BTC mid</span>
+            <span id="stat-mid" class="stat-value mono">—</span>
+          </article>
+          <article class="stat">
+            <span class="stat-label">Orders</span>
+            <span id="stat-orders" class="stat-value mono">—</span>
+          </article>
+          <article class="stat">
+            <span class="stat-label">Holds</span>
+            <span id="stat-holds" class="stat-value mono">—</span>
+          </article>
+        </div>
+      </section>
+
+      <section class="gates" aria-label="Safety gates">
+        <h2>Safety gates</h2>
+        <div class="gate-row" id="gates"></div>
+      </section>
+
+      <div class="split">
+        <section aria-label="Sessions">
+          <div class="section-head">
+            <h2>Sessions</h2>
+            <span id="session-count" class="mono muted">0</span>
+          </div>
+          <ul id="session-list" class="session-list"></ul>
+        </section>
+
+        <section aria-label="Journal">
+          <div class="section-head">
+            <h2>Journal</h2>
+            <span id="journal-session" class="mono muted">—</span>
+          </div>
+          <ol id="journal" class="journal"></ol>
+        </section>
+      </div>
+    </main>
+
+    <footer>
+      <p>
+        Local only · <span class="mono">npm run dashboard</span> ·
+        <span class="mono">npm run coinbase:live</span>
+      </p>
+    </footer>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
