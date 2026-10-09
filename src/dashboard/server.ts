@@ -1,10 +1,12 @@
-import "dotenv/config";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join, extname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import dotenv from "dotenv";
 
 const ROOT = resolve(fileURLToPath(new URL("../..", import.meta.url)));
+dotenv.config({ path: join(ROOT, ".env") });
+
 const PUBLIC = join(ROOT, "dashboard/public");
 const SESSIONS = join(ROOT, "data/sessions");
 const PORT = Number(process.env.DASHBOARD_PORT ?? 8787);
@@ -20,7 +22,8 @@ const MIME: Record<string, string> = {
 function send(res: ServerResponse, status: number, body: string, type = "application/json") {
   res.writeHead(status, {
     "Content-Type": type,
-    "Cache-Control": "no-store",
+    "Cache-Control": "no-store, max-age=0",
+    Pragma: "no-cache",
   });
   res.end(body);
 }
@@ -106,7 +109,9 @@ function journalTail(sessionId: string, limit = 40) {
 
 function statusPayload() {
   const sessions = listSessions();
-  const latest = sessions[0] ?? null;
+  // Prefer newest Coinbase session for "latest" so paper 100k equity doesn't dominate the hero
+  const latestCb = sessions.find((s) => String(s.mode ?? "").includes("coinbase"));
+  const latest = latestCb ?? sessions[0] ?? null;
   const killPath = process.env.KILL_SWITCH_PATH ?? join(SESSIONS, "kill-switch.json");
   const kill = (readJson(killPath) as { armed?: boolean; reason?: string } | null) ?? {
     armed: true,

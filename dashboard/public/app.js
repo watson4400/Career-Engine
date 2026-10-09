@@ -98,9 +98,14 @@ function renderLatest(status, book) {
       .map((b) => `${b.currency} ${fmtMoney(b.available)}`)
       .join(" · ");
     $("stat-equity-sub").textContent = bal || `cash ${fmtMoney(book.liveCash)}`;
+  } else if (book?.ok && book.mid != null && book.liveEquity == null) {
+    $("stat-equity").textContent = "—";
+    $("stat-equity-sub").textContent = "Restart dashboard (old server)";
   } else {
     $("stat-equity").textContent = "—";
-    $("stat-equity-sub").textContent = book?.error ? "Coinbase n/a" : "waiting for Coinbase…";
+    $("stat-equity-sub").textContent = book?.error
+      ? String(book.error).slice(0, 80)
+      : "waiting for Coinbase…";
   }
 
   if (!latest) {
@@ -152,11 +157,10 @@ function renderSessions(sessions) {
       selectedId = s.id;
       loadJournal(s.id);
       renderSessions(sessions);
-      // Update hero P&L to selected session
+      // Update session P&L / mode — do NOT overwrite live Coinbase equity
       const { pnlPct: p, pnlUsd: u } = sessionPnl(s);
       $("latest-mode").textContent = String(s.mode ?? "session");
-      $("latest-sub").textContent = s.id;
-      $("stat-equity").textContent = fmtMoney(s.equity);
+      $("latest-sub").textContent = `${s.id} · session equity ${fmtMoney(s.equity)}`;
       $("stat-orders").textContent = `${s.orders ?? "—"} / ${s.holds ?? "—"}`;
       renderPnl(u, p);
     });
