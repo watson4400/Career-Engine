@@ -89,42 +89,113 @@ export class CoinbaseAdvancedClient {
 
   async placeMarket(intent: OrderIntent, tsMs: number, mid: number, equity: number): Promise<Fill | null> {
     const notional = intent.notionalPct * equity;
-    if (notional <= 0) return null;
-    const productId = toCoinbaseProduct(intent.symbol);
-    const side = intent.side.toUpperCase() as "BUY" | "SELL";
-    const client_order_id = clientOrderId(intent, tsMs);
+    if (notional <= 0 || !(mid > 0)) return null;
+    const side = intent.side;
+    const qty = notional / mid;
+    if (intent.reason === "emergency_flatten") {
+      return this.submitMarket({
+        intent,
+        tsMs,
+        mid,
+        side,
+        baseSize: qty,
+        quoteSize: side === "buy" ? notional : undefined,
+      });
+    }
+    return this.submitMarket({
+      intent,
+      tsMs,
+      mid,
+      side,
+      quoteSize: side === "buy" ? notional : undefined,
+      baseSize: side === "sell" ? qty : undefined,
+    });
+  }
+
+  /**
+   * Close inventory by base size (preferred for emergency flatten).
+   */
+  async flattenBase(opts: {
+    schemaId: string;
+    symbol: string;
+    inventoryQty: number;
+    mid: number;
+    tsMs: number;
+    calibratedP?: number;
+  }): Promise<Fill | null> {
+    const qty = Math.abs(opts.inventoryQty);
+    if (qty < 1e-8 || !(opts.mid > 0)) return null;
+    const side = opts.inventoryQty > 0 ? "sell" : "buy";
+    const intent: OrderIntent = {
+      schemaId: opts.schemaId,
+      symbol: opts.symbol,
+      side,
+      notionalPct: Math.min(1, (qty * opts.mid) / Math.max(qty * opts.mid, 1)),
+      reason: "emergency_flatten",
+      directionConfidence: 1,
+      setupQuality: 3,
+      calibratedP: opts.calibratedP ?? 0.5,
+    };
+    return this.submitMarket({
+      intent,
+      tsMs: opts.tsMs,
+      mid: opts.mid,
+      side,
+      baseSize: qty,
+      quoteSize: side === "buy" ? qty * opts.mid : undefined,
+    });
+  }
+
+  private async submitMarket(opts: {
+    intent: OrderIntent;
+    tsMs: number;
+    mid: number;
+    side: "buy" | "sell";
+    quoteSize?: number;
+    baseSize?: number;
+  }): Promise<Fill | null> {
+    const productId = toCoinbaseProduct(opts.intent.symbol);
+    const side = opts.side.toUpperCase() as "BUY" | "SELL";
+    const client_order_id = clientOrderId(opts.intent, opts.tsMs);
+    const qty =
+      opts.baseSize ??
+      (opts.quoteSize && opts.mid > 0 ? opts.quoteSize / opts.mid : 0);
+    if (qty <= 0 && !(opts.quoteSize && opts.quoteSize > 0)) return null;
 
     if (this.dryRun) {
-      const price = mid * (side === "BUY" ? 1.0002 : 0.9998);
-      const qty = notional / price;
+      const price = opts.mid * (side === "BUY" ? 1.0002 : 0.9998);
       return {
         id: `dry-${client_order_id}`,
-        schemaId: intent.schemaId,
-        symbol: intent.symbol,
-        side: intent.side,
-        qty,
+        schemaId: opts.intent.schemaId,
+        symbol: opts.intent.symbol,
+        side: opts.side,
+        qty: qty || (opts.quoteSize! / price),
         price,
-        tsMs,
-        predictedP: intent.calibratedP,
+        tsMs: opts.tsMs,
+        predictedP: opts.intent.calibratedP,
       };
     }
 
-    const body: Record<string, unknown> = {
-      client_order_id,
-      product_id: productId,
-      side,
-      order_configuration:
-        side === "BUY"
-          ? { market_market_ioc: { quote_size: Math.max(1, notional).toFixed(2) } }
-          : { market_market_ioc: { base_size: (notional / mid).toFixed(8) } },
-    };
+    let order_configuration: Record<string, unknown>;
+    if (opts.baseSize != null && opts.baseSize > 0) {
+      order_configuration = { market_market_ioc: { base_size: opts.baseSize.toFixed(8) } };
+    } else {
+      order_configuration = {
+        market_market_ioc: { quote_size: Math.max(1, opts.quoteSize ?? 0).toFixed(2) },
+      };
+    }
 
     const json = await this.request<{
       success: boolean;
       success_response?: { order_id: string };
       error_response?: { message?: string; error?: string };
       failure_reason?: string;
-    }>("POST", "/api/v3/brokerage/orders", body);
+    }>("POST", "/api/v3/brokerage/orders", {
+      client_order_id,
+      product_id: productId,
+      side,
+      order_configuration,
+    });
 
     if (!json.success) {
       const msg =
@@ -137,13 +208,13 @@ export class CoinbaseAdvancedClient {
 
     return {
       id: json.success_response?.order_id ?? client_order_id,
-      schemaId: intent.schemaId,
-      symbol: intent.symbol,
-      side: intent.side,
-      qty: notional / mid,
-      price: mid,
-      tsMs,
-      predictedP: intent.calibratedP,
+      schemaId: opts.intent.schemaId,
+      symbol: opts.intent.symbol,
+      side: opts.side,
+      qty: qty || 0,
+      price: opts.mid,
+      tsMs: opts.tsMs,
+      predictedP: opts.intent.calibratedP,
     };
   }
 

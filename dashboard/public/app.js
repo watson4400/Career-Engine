@@ -67,7 +67,9 @@ function renderGates(status) {
       f.coinbaseDryRun ? "on" : "off",
     ),
     gate(
-      status.killSwitch.armed ? "Kill switch ARMED" : "Kill switch disarmed",
+      status.killSwitch.armed
+        ? `Kill ARMED${status.killSwitch.reason ? ": " + status.killSwitch.reason : ""}`
+        : "Kill switch disarmed",
       status.killSwitch.armed ? "warn" : "off",
     ),
     gate(f.hasTypesafe ? "Jev key set" : "Jev key missing", f.hasTypesafe ? "on" : "warn"),

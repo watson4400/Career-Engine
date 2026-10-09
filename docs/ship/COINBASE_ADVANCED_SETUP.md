@@ -84,8 +84,22 @@ Start tiny. Fund only what you can lose. First week: `BTC-USD` only.
 | --- | --- |
 | `COINBASE_DRY_RUN` | `true` |
 | `LIVE_TRADING` | `false` |
-| Kill switch | armed |
+| Kill switch | armed by default; file `data/sessions/kill-switch.json` |
 | Max position | 25% equity (code) |
-| Max drawdown | 15% (arms kill) |
+| Max drawdown | **15%** → auto-arms kill |
+| Max daily loss | **3%** → auto-arms kill |
+| Flatten-on-kill | Closes BTC inventory once when kill arms (dry or live) |
+
+Continuous monitor runs **every candle**, even if Jev says hold.
 
 Never commit `.env`. Never enable withdraw on the API key.
+
+## Suggested starting capital
+
+| Amount | Use |
+| --- | --- |
+| **$200–500** | Recommended first live bankroll |
+| $100 | Absolute minimum (fees hurt more) |
+| >$1,000 | Only after several clean supervised live weeks |
+
+You are learning the system, not maximizing return. Fund small.

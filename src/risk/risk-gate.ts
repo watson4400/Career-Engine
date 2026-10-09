@@ -1,6 +1,7 @@
 import { RISK, isLiveTrading } from "../config/constants.js";
 import type { OrderIntent, PortfolioState } from "../types/index.js";
 import { KillSwitch } from "./kill-switch.js";
+import { monitorAndMaybeKill } from "./monitor.js";
 
 export type RiskDecision =
   | { ok: true }
@@ -12,31 +13,33 @@ export type RiskDecision =
 export class RiskGate {
   constructor(private readonly kill = new KillSwitch()) {}
 
+  /**
+   * Continuous check (no order required). Arms kill on DD / daily loss.
+   */
+  monitor(portfolio: PortfolioState, mid: number) {
+    return monitorAndMaybeKill(portfolio, mid, this.kill);
+  }
+
   authorize(intent: OrderIntent, portfolio: PortfolioState, mid: number): RiskDecision {
+    // Re-check portfolio limits every authorize
+    const mon = this.monitor(portfolio, mid);
+    if (mon.tripped && this.kill.isBlocking()) {
+      // Allow only emergency flatten through a dedicated path
+      if (intent.reason === "emergency_flatten") {
+        return this.authorizeEmergencyFlatten(intent, portfolio, mid);
+      }
+      return { ok: false, reason: mon.reason ?? "kill_switch_armed", kill: true };
+    }
+
     if (this.kill.isBlocking()) {
+      if (intent.reason === "emergency_flatten") {
+        return this.authorizeEmergencyFlatten(intent, portfolio, mid);
+      }
       return { ok: false, reason: "kill_switch_armed", kill: true };
     }
 
     if (isLiveTrading() === false && process.env.ALLOW_PAPER_ORDERS === "false") {
       return { ok: false, reason: "orders_disabled" };
-    }
-
-    const dd =
-      portfolio.peakEquity > 0
-        ? Math.max(0, (portfolio.peakEquity - portfolio.equity) / portfolio.peakEquity)
-        : 0;
-    if (dd >= RISK.maxDrawdownPct) {
-      this.kill.arm(`max_drawdown ${dd}`);
-      return { ok: false, reason: `max_drawdown ${dd}`, kill: true };
-    }
-
-    const dayLoss =
-      portfolio.dayStartEquity > 0
-        ? Math.max(0, (portfolio.dayStartEquity - portfolio.equity) / portfolio.dayStartEquity)
-        : 0;
-    if (dayLoss >= RISK.maxDailyLossPct) {
-      this.kill.arm(`max_daily_loss ${dayLoss}`);
-      return { ok: false, reason: `max_daily_loss ${dayLoss}`, kill: true };
     }
 
     if (intent.notionalPct > RISK.kellyFractionCap + 1e-9) {
@@ -47,7 +50,6 @@ export class RiskGate {
       return { ok: false, reason: "dust_order" };
     }
 
-    // Signed projection: reducing inventory must not be blocked as "adding"
     const currentNotional = portfolio.inventoryQty * mid;
     const delta = (intent.side === "buy" ? 1 : -1) * intent.notionalPct * portfolio.equity;
     const projectedAbs = Math.abs(currentNotional + delta);
@@ -56,6 +58,28 @@ export class RiskGate {
       return { ok: false, reason: `max_position ${projectedPct}` };
     }
 
+    return { ok: true };
+  }
+
+  /** Reduce-only escape hatch while kill is armed. */
+  authorizeEmergencyFlatten(
+    intent: OrderIntent,
+    portfolio: PortfolioState,
+    mid: number,
+  ): RiskDecision {
+    if (intent.reason !== "emergency_flatten") {
+      return { ok: false, reason: "not_emergency_flatten" };
+    }
+    const reducing =
+      (intent.side === "sell" && portfolio.inventoryQty > 0) ||
+      (intent.side === "buy" && portfolio.inventoryQty < 0);
+    if (!reducing) {
+      return { ok: false, reason: "flatten_not_reducing" };
+    }
+    if (intent.notionalPct > RISK.kellyFractionCap + 1e-9) {
+      return { ok: false, reason: "notional_exceeds_quarter_kelly" };
+    }
+    void mid;
     return { ok: true };
   }
 

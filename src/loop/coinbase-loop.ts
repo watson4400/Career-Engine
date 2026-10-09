@@ -1,17 +1,21 @@
 import { appendFileSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { escalateToBrain } from "../brain/escalate.js";
+import { isLiveTrading } from "../config/constants.js";
 import { CoinbaseAdvancedClient, productToEngineSymbol } from "../exchange/coinbase/client.js";
 import { JevClient } from "../jev/client.js";
-import { questionsForSchema } from "../jev/schemas.js";
 import { paperTrainerDecide } from "../jev/paper-trainer.js";
+import { questionsForSchema } from "../jev/schemas.js";
 import { evaluatePolicy } from "../policy/gates.js";
+import { buildFlattenIntent } from "../risk/flatten.js";
 import { KillSwitch } from "../risk/kill-switch.js";
 import { RiskGate } from "../risk/risk-gate.js";
 import { serializeSnapshot } from "../state/snapshot.js";
 import { StateEngine } from "../state/state-engine.js";
-import { isLiveTrading } from "../config/constants.js";
 import type { PredictionRecord } from "../types/index.js";
+
+const ROOT = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
 export interface CoinbaseLoopConfig {
   sessionId: string;
@@ -22,8 +26,12 @@ export interface CoinbaseLoopConfig {
   outDir?: string;
 }
 
+function globalKillPath(): string {
+  return process.env.KILL_SWITCH_PATH ?? join(ROOT, "data/sessions/kill-switch.json");
+}
+
 export async function runCoinbaseLoop(cfg: CoinbaseLoopConfig): Promise<Record<string, unknown>> {
-  const outDir = cfg.outDir ?? join("data/sessions", cfg.sessionId);
+  const outDir = cfg.outDir ?? join(ROOT, "data/sessions", cfg.sessionId);
   mkdirSync(outDir, { recursive: true });
 
   const dryRun = process.env.COINBASE_DRY_RUN !== "false";
@@ -32,15 +40,19 @@ export async function runCoinbaseLoop(cfg: CoinbaseLoopConfig): Promise<Record<s
   const engineSymbol = productToEngineSymbol(client.productId);
   const schemaId = cfg.schemaId ?? "btc_regime_beta";
 
-  const kill = new KillSwitch(join(outDir, "kill-switch.json"));
+  const kill = new KillSwitch(globalKillPath());
   if (liveOrders) {
-    // Live orders require explicit disarm in this session folder
     if (kill.isBlocking()) {
       throw new Error(
-        "Kill switch armed. Disarm only when ready: set kill-switch.json armed=false for this session.",
+        "Global kill switch armed. Disarm data/sessions/kill-switch.json (armed=false) only when ready for live orders.",
       );
     }
-  } else {
+  }
+  // Dry-run may proceed even if kill was left armed from a prior trip — but we still monitor.
+  // For dry-run order sim, temporarily allow policy orders only if kill not armed OR we disarm for dry.
+  if (!liveOrders && kill.isBlocking() && kill.read().reason?.startsWith("max_")) {
+    // leave armed — dry loop should demonstrate blocks/flatten path
+  } else if (!liveOrders) {
     kill.disarm("coinbase-dry-run");
   }
 
@@ -58,13 +70,14 @@ export async function runCoinbaseLoop(cfg: CoinbaseLoopConfig): Promise<Record<s
   let orders = 0;
   let blocks = 0;
   let escalations = 0;
+  let flattens = 0;
   let lastEquity = 0;
+  let flattenedThisArm = false;
   const reasonCounts: Record<string, number> = {};
   const bump = (r: string) => {
     reasonCounts[r] = (reasonCounts[r] ?? 0) + 1;
   };
 
-  // Seed portfolio peak from first book
   let portfolio = await (async () => {
     const book0 = await client.getBestBidAsk();
     const mid0 = (book0.bids[0]!.price + book0.asks[0]!.price) / 2;
@@ -78,7 +91,6 @@ export async function runCoinbaseLoop(cfg: CoinbaseLoopConfig): Promise<Record<s
     engine.onBook(book, wall);
     const mid = (book.bids[0]!.price + book.asks[0]!.price) / 2;
 
-    // Refresh balances periodically (every candle is fine for slow loop)
     const snapPortfolio = await client.portfolioSnapshot(mid);
     portfolio = {
       ...snapPortfolio,
@@ -87,6 +99,70 @@ export async function runCoinbaseLoop(cfg: CoinbaseLoopConfig): Promise<Record<s
       avgEntry: portfolio.avgEntry || snapPortfolio.avgEntry,
     };
     lastEquity = portfolio.equity;
+
+    // Continuous risk monitor (no order required)
+    const mon = risk.monitor(portfolio, mid);
+    if (mon.newlyArmed) {
+      journal(outDir, {
+        i,
+        action: "kill_armed",
+        reason: mon.reason,
+        metrics: mon.metrics,
+        mid,
+        equity: portfolio.equity,
+      });
+      bump("kill_armed");
+      flattenedThisArm = false;
+    }
+
+    // Flatten-on-kill: close inventory once per arm event
+    if (kill.isBlocking() && !flattenedThisArm && Math.abs(portfolio.inventoryQty) > 1e-8) {
+      const flattenIntent = buildFlattenIntent(portfolio, mid, schemaId, engineSymbol);
+      if (flattenIntent) {
+        const auth = risk.authorize(flattenIntent, portfolio, mid);
+        if (auth.ok) {
+          const fill = await client.flattenBase({
+            schemaId,
+            symbol: engineSymbol,
+            inventoryQty: portfolio.inventoryQty,
+            mid,
+            tsMs: book.tsMs,
+          });
+          flattens++;
+          flattenedThisArm = true;
+          bump(liveOrders ? "flatten:live" : "flatten:dry");
+          journal(outDir, {
+            i,
+            action: liveOrders ? "flatten_live" : "flatten_dry",
+            reason: mon.reason ?? kill.read().reason,
+            fill,
+            mid,
+            equity: portfolio.equity,
+          });
+          // Refresh after flatten
+          const after = await client.portfolioSnapshot(mid);
+          portfolio = {
+            ...after,
+            peakEquity: Math.max(portfolio.peakEquity, after.equity),
+            dayStartEquity: portfolio.dayStartEquity,
+          };
+          lastEquity = portfolio.equity;
+        } else {
+          journal(outDir, { i, action: "flatten_blocked", reason: auth.reason, mid });
+        }
+      } else {
+        flattenedThisArm = true; // nothing to flatten
+      }
+    }
+
+    // While killed, skip Jev trading path (only flatten above)
+    if (kill.isBlocking()) {
+      holds++;
+      bump("hold:kill_switch");
+      journal(outDir, { i, action: "hold", reason: "kill_switch_armed", mid });
+      if (i < cfg.candles - 1 && cfg.intervalMs > 0) await sleep(cfg.intervalMs);
+      continue;
+    }
 
     const snap = engine.snapshot(portfolio);
     const decision = await jev.decide(serializeSnapshot(snap), questionsForSchema(schemaId));
@@ -107,6 +183,7 @@ export async function runCoinbaseLoop(cfg: CoinbaseLoopConfig): Promise<Record<s
         blocks++;
         bump(`block:${auth.reason.split(" ")[0]}`);
         journal(outDir, { i, action: "block", reason: auth.reason, mid });
+        if (auth.kill) flattenedThisArm = false;
       } else {
         const fill = await client.placeMarket(policy.intent, book.tsMs, mid, portfolio.equity);
         orders++;
@@ -147,6 +224,9 @@ export async function runCoinbaseLoop(cfg: CoinbaseLoopConfig): Promise<Record<s
     orders,
     blocks,
     escalations,
+    flattens,
+    killArmed: kill.isBlocking(),
+    killReason: kill.isBlocking() ? kill.read().reason : null,
     equity: lastEquity,
     startingEquity,
     pnlUsd,
