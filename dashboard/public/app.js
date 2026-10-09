@@ -90,10 +90,22 @@ function renderPnl(pnlUsd, pnlPct) {
 function renderLatest(status, book) {
   const latest = status.latest;
   $("clock").textContent = new Date(status.now).toLocaleString();
+
+  // Live Coinbase equity (real account) — not paper's 100k
+  if (book?.ok && book.liveEquity != null) {
+    $("stat-equity").textContent = fmtMoney(book.liveEquity);
+    const bal = (book.balances || [])
+      .map((b) => `${b.currency} ${fmtMoney(b.available)}`)
+      .join(" · ");
+    $("stat-equity-sub").textContent = bal || `cash ${fmtMoney(book.liveCash)}`;
+  } else {
+    $("stat-equity").textContent = "—";
+    $("stat-equity-sub").textContent = book?.error ? "Coinbase n/a" : "waiting for Coinbase…";
+  }
+
   if (!latest) {
     $("latest-mode").textContent = "No sessions yet";
     $("latest-sub").textContent = "Run npm run paper or npm run coinbase:live";
-    $("stat-equity").textContent = "—";
     $("stat-orders").textContent = "—";
     renderPnl(null, null);
   } else {
@@ -104,10 +116,10 @@ function renderLatest(status, book) {
       latest.id,
       latest.jev ? `jev:${latest.jev}` : null,
       latest.productId ? `product:${latest.productId}` : null,
+      latest.equity != null ? `session equity ${fmtMoney(latest.equity)}` : null,
       latest.brier != null ? `brier:${Number(latest.brier).toFixed(3)}` : null,
     ].filter(Boolean);
     $("latest-sub").textContent = bits.join(" · ");
-    $("stat-equity").textContent = fmtMoney(latest.equity);
     $("stat-orders").textContent = `${latest.orders ?? "—"} / ${latest.holds ?? "—"}`;
     renderPnl(pnlUsd, pnlPct);
     if (!selectedId) selectedId = latest.id;

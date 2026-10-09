@@ -71,18 +71,20 @@ export class CoinbaseAdvancedClient {
 
   async portfolioSnapshot(btcPrice: number): Promise<PortfolioState> {
     const accounts = await this.listAccounts();
-    const usd = accounts.find((a) => a.currency === "USD") ?? accounts.find((a) => a.currency === "USDC");
+    // Sum USD + USDC (deposits often land in USDC)
+    const cash = accounts
+      .filter((a) => a.currency === "USD" || a.currency === "USDC")
+      .reduce((s, a) => s + a.available, 0);
     const btc = accounts.find((a) => a.currency === "BTC");
-    const cash = usd?.available ?? 0;
     const inventoryQty = btc?.available ?? 0;
     const equity = cash + inventoryQty * btcPrice;
     return {
-      equity: Math.max(equity, 1),
+      equity: Math.max(equity, 0.01),
       cash,
       inventoryQty,
       avgEntry: inventoryQty !== 0 ? btcPrice : 0,
-      peakEquity: Math.max(equity, 1),
-      dayStartEquity: Math.max(equity, 1),
+      peakEquity: Math.max(equity, 0.01),
+      dayStartEquity: Math.max(equity, 0.01),
       realizedPnlDay: 0,
     };
   }

@@ -164,6 +164,8 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
       const client = new CoinbaseAdvancedClient({ dryRun: true });
       const book = await client.getBestBidAsk();
       const mid = (book.bids[0]!.price + book.asks[0]!.price) / 2;
+      const portfolio = await client.portfolioSnapshot(mid);
+      const accounts = await client.listAccounts();
       return json(res, {
         ok: true,
         productId: client.productId,
@@ -172,6 +174,12 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
         ask: book.asks[0]!.price,
         spreadBps: ((book.asks[0]!.price - book.bids[0]!.price) / mid) * 10_000,
         tsMs: book.tsMs,
+        liveEquity: portfolio.equity,
+        liveCash: portfolio.cash,
+        liveBtc: portfolio.inventoryQty,
+        balances: accounts
+          .filter((a) => a.available > 0)
+          .map((a) => ({ currency: a.currency, available: a.available })),
       });
     } catch (e) {
       return json(res, { ok: false, error: String((e as Error)?.message ?? e) });
