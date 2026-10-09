@@ -12,6 +12,16 @@ npm test
 npm run paper
 ```
 
+### Coinbase Advanced (dry-run by default)
+
+```bash
+# add COINBASE_API_KEY_ID + COINBASE_API_KEY_SECRET to .env
+npm run coinbase:doctor   # read-only
+npm run coinbase:live     # live book + simulated orders unless gates flipped
+```
+
+See `docs/ship/COINBASE_ADVANCED_SETUP.md`.
+
 ## Architecture
 
 | Layer | Role |

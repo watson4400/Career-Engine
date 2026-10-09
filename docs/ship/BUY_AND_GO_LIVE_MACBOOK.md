@@ -58,17 +58,15 @@ npx agenkit install engineering-kit --harness cursor
 
 In-repo `.cursor/commands/agenkit.md` already mirrors the six phases **without** this purchase.
 
-### D. Exchange — for *later* live trades (buy account now, fund tiny)
+### D. Exchange — Coinbase Advanced (wired)
 
-Pick **one** venue you can legally use (US users: often Coinbase Advanced / Kraken; non-US often Bybit/OKX). Binance Futures was **geo-blocked** from our build host — do not assume Binance works from your network.
+See **`docs/ship/COINBASE_ADVANCED_SETUP.md`**.
 
 | Buy / create | Notes |
 | --- | --- |
-| Exchange account + **API keys** (trade + read; **no withdraw** if possible) | Store only in `.env`, never commit |
-| Start capital | **$100–500** max for first live week — not more |
-| 2FA + withdrawal whitelist | Mandatory |
-
-We still need a `LiveExchange` adapter in code before these keys do anything.
+| Coinbase Advanced + **CDP API keys** (view + trade; **no withdraw**) | `COINBASE_API_KEY_ID` + `COINBASE_API_KEY_SECRET` |
+| Start capital | **$100–500** max for first live week |
+| Dry-run first | `COINBASE_DRY_RUN=true` (default) — `npm run coinbase:doctor` then `npm run coinbase:live` |
 
 ### E. Always-on host (strongly recommended)
 
