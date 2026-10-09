@@ -1,0 +1,9 @@
+{
+  "phase": 1,
+  "name": "spec",
+  "artifact": "docs/specs/001-autonomous-crypto-agent.md",
+  "approved": false,
+  "approved_by": null,
+  "approved_at": null,
+  "notes": "Operator: set approved=true to unlock architecture sign-off. Code is built in parallel for review; live trading remains blocked until ship gate + LIVE_TRADING."
+}

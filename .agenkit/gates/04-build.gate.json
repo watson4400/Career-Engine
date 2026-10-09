@@ -1,0 +1,9 @@
+{
+  "phase": 4,
+  "name": "build",
+  "artifact": "src/",
+  "approved": false,
+  "approved_by": null,
+  "approved_at": null,
+  "notes": "Approve after npm test is green and paper loop reviewed."
+}

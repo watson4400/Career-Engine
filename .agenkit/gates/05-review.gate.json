@@ -1,0 +1,9 @@
+{
+  "phase": 5,
+  "name": "review",
+  "artifact": "docs/reviews/001-code-review.md",
+  "approved": false,
+  "approved_by": null,
+  "approved_at": null,
+  "notes": "Two-stage review: spec compliance then code quality."
+}
