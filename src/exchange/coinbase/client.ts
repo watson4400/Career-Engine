@@ -57,34 +57,63 @@ export class CoinbaseAdvancedClient {
     };
   }
 
-  async listAccounts(): Promise<{ uuid: string; currency: string; available: number }[]> {
-    const path = "/api/v3/brokerage/accounts";
-    const json = await this.request<{
-      accounts: { uuid: string; currency: string; available_balance: { value: string } }[];
-    }>("GET", path);
-    return (json.accounts ?? []).map((a) => ({
-      uuid: a.uuid,
-      currency: a.currency,
-      available: Number(a.available_balance?.value ?? 0),
-    }));
+  async listAccounts(): Promise<
+    { uuid: string; currency: string; available: number; hold: number; total: number }[]
+  > {
+    // Default page size is 49 — Coinbase returns many zero wallets; paginate fully.
+    const out: { uuid: string; currency: string; available: number; hold: number; total: number }[] =
+      [];
+    let cursor: string | undefined;
+    for (let page = 0; page < 20; page++) {
+      const qs = new URLSearchParams({ limit: "250" });
+      if (cursor) qs.set("cursor", cursor);
+      const json = await this.request<{
+        accounts: {
+          uuid: string;
+          currency: string;
+          available_balance?: { value?: string };
+          hold?: { value?: string };
+        }[];
+        has_next?: boolean;
+        cursor?: string;
+      }>("GET", `/api/v3/brokerage/accounts?${qs}`);
+      for (const a of json.accounts ?? []) {
+        const available = Number(a.available_balance?.value ?? 0);
+        const hold = Number(a.hold?.value ?? 0);
+        out.push({
+          uuid: a.uuid,
+          currency: a.currency,
+          available: Number.isFinite(available) ? available : 0,
+          hold: Number.isFinite(hold) ? hold : 0,
+          total: (Number.isFinite(available) ? available : 0) + (Number.isFinite(hold) ? hold : 0),
+        });
+      }
+      if (!json.has_next || !json.cursor) break;
+      cursor = json.cursor;
+    }
+    return out;
   }
 
   async portfolioSnapshot(btcPrice: number): Promise<PortfolioState> {
     const accounts = await this.listAccounts();
-    // Sum USD + USDC (deposits often land in USDC)
+    // Sum USD + USDC (deposits often land in USDC). Use available+hold so equity isn't zero during holds.
     const cash = accounts
       .filter((a) => a.currency === "USD" || a.currency === "USDC")
-      .reduce((s, a) => s + a.available, 0);
-    const btc = accounts.find((a) => a.currency === "BTC");
-    const inventoryQty = btc?.available ?? 0;
+      .reduce((s, a) => s + a.total, 0);
+    const btc = accounts
+      .filter((a) => a.currency === "BTC")
+      .reduce((s, a) => s + a.total, 0);
+    const inventoryQty = btc;
     const equity = cash + inventoryQty * btcPrice;
+    // Keep a tiny floor for risk math only when truly empty — dashboard shows raw cash via /api/book.
+    const eq = Number.isFinite(equity) ? equity : 0;
     return {
-      equity: Math.max(equity, 0.01),
+      equity: eq > 0 ? eq : 0.01,
       cash,
       inventoryQty,
       avgEntry: inventoryQty !== 0 ? btcPrice : 0,
-      peakEquity: Math.max(equity, 0.01),
-      dayStartEquity: Math.max(equity, 0.01),
+      peakEquity: eq > 0 ? eq : 0.01,
+      dayStartEquity: eq > 0 ? eq : 0.01,
       realizedPnlDay: 0,
     };
   }

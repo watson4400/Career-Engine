@@ -1,10 +1,37 @@
 const $ = (id) => document.getElementById(id);
 
 let selectedId = null;
+/** Last good Coinbase equity — "—" means not loaded, never treat as $0 */
+let lastLiveEquity = null;
+let lastLiveBalances = null;
 
 function fmtMoney(n) {
   if (n == null || Number.isNaN(Number(n))) return "—";
-  return Number(n).toLocaleString(undefined, { maximumFractionDigits: 2 });
+  return Number(n).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function equityFromBook(book) {
+  if (!book || book.ok === false) return null;
+  if (book.liveEquity != null && Number.isFinite(Number(book.liveEquity))) {
+    return Number(book.liveEquity);
+  }
+  // Fallback: sum USD/USDC (+ BTC*mid) from balances if server omitted liveEquity
+  const bals = book.balances || [];
+  if (!bals.length) return null;
+  let cash = 0;
+  let btc = 0;
+  for (const b of bals) {
+    const amt = Number(b.total ?? b.available ?? 0);
+    if (!Number.isFinite(amt)) continue;
+    if (b.currency === "USD" || b.currency === "USDC") cash += amt;
+    if (b.currency === "BTC") btc += amt;
+  }
+  const mid = Number(book.mid);
+  if (!(cash > 0 || btc > 0)) return cash === 0 && btc === 0 ? 0 : null;
+  return cash + (Number.isFinite(mid) ? btc * mid : 0);
 }
 
 function fmtPct(n) {
@@ -91,21 +118,34 @@ function renderLatest(status, book) {
   const latest = status.latest;
   $("clock").textContent = new Date(status.now).toLocaleString();
 
-  // Live Coinbase equity (real account) — not paper's 100k
-  if (book?.ok && book.liveEquity != null) {
-    $("stat-equity").textContent = fmtMoney(book.liveEquity);
-    const bal = (book.balances || [])
-      .map((b) => `${b.currency} ${fmtMoney(b.available)}`)
+  // Live Coinbase equity (real account) — not paper's 100k.
+  // Em-dash means "not loaded" — it is NOT zero. Doctor equity is the source of truth until this loads.
+  const merged = book?.ok ? book : status.book?.ok ? status.book : book;
+  const eq = equityFromBook(merged);
+  if (eq != null) {
+    lastLiveEquity = eq;
+    lastLiveBalances = merged.balances || null;
+    $("stat-equity").textContent = fmtMoney(eq);
+    const bal = (merged.balances || [])
+      .map((b) => `${b.currency} ${fmtMoney(b.total ?? b.available)}`)
       .join(" · ");
-    $("stat-equity-sub").textContent = bal || `cash ${fmtMoney(book.liveCash)}`;
-  } else if (book?.ok && book.mid != null && book.liveEquity == null) {
+    $("stat-equity-sub").textContent =
+      bal || `cash ${fmtMoney(merged.liveCash ?? eq)} · not zero`;
+  } else if (lastLiveEquity != null) {
+    $("stat-equity").textContent = fmtMoney(lastLiveEquity);
+    $("stat-equity-sub").textContent = merged?.error
+      ? `stale · ${String(merged.error).slice(0, 60)}`
+      : "stale (last good) · not zero";
+  } else if (merged?.ok && merged.mid != null && merged.liveEquity == null) {
     $("stat-equity").textContent = "—";
-    $("stat-equity-sub").textContent = "Restart dashboard (old server)";
+    $("stat-equity-sub").textContent = "Restart dashboard — not $0";
   } else {
     $("stat-equity").textContent = "—";
-    $("stat-equity-sub").textContent = book?.error
-      ? String(book.error).slice(0, 80)
-      : "waiting for Coinbase…";
+    $("stat-equity-sub").textContent = merged?.error
+      ? `not loaded · ${String(merged.error).slice(0, 70)}`
+      : status.flags?.hasCoinbase === false
+        ? "not loaded · Coinbase keys missing in dashboard .env"
+        : "not loaded · waiting for Coinbase (not $0)";
   }
 
   if (!latest) {
@@ -203,7 +243,16 @@ async function refresh() {
   ]);
   const status = await statusRes.json();
   const { sessions } = await sessionsRes.json();
-  const book = await bookRes.json();
+  let book = null;
+  try {
+    book = await bookRes.json();
+  } catch {
+    book = { ok: false, error: "book parse failed" };
+  }
+  // Prefer dedicated book; fall back to status.book (same payload, newer servers)
+  if ((!book || book.ok === false) && status.book?.ok) {
+    book = status.book;
+  }
   renderGates(status);
   renderLatest(status, book);
   renderSessions(sessions);

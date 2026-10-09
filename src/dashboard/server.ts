@@ -139,9 +139,62 @@ function statusPayload() {
   };
 }
 
+/** Live Coinbase book + equity. "—" in the UI means this failed — not a $0 balance. */
+async function liveBookPayload(): Promise<Record<string, unknown>> {
+  try {
+    const { CoinbaseAdvancedClient } = await import("../exchange/coinbase/client.js");
+    const client = new CoinbaseAdvancedClient({ dryRun: true });
+    const book = await client.getBestBidAsk();
+    const mid = (book.bids[0]!.price + book.asks[0]!.price) / 2;
+    const accounts = await client.listAccounts();
+    const cash = accounts
+      .filter((a) => a.currency === "USD" || a.currency === "USDC")
+      .reduce((s, a) => s + a.total, 0);
+    const liveBtc = accounts
+      .filter((a) => a.currency === "BTC")
+      .reduce((s, a) => s + a.total, 0);
+    const liveEquity = cash + liveBtc * mid;
+    return {
+      ok: true,
+      productId: client.productId,
+      mid,
+      bid: book.bids[0]!.price,
+      ask: book.asks[0]!.price,
+      spreadBps: ((book.asks[0]!.price - book.bids[0]!.price) / mid) * 10_000,
+      tsMs: book.tsMs,
+      liveEquity,
+      liveCash: cash,
+      liveBtc,
+      balances: accounts
+        .filter((a) => a.total > 0)
+        .map((a) => ({
+          currency: a.currency,
+          available: a.available,
+          hold: a.hold,
+          total: a.total,
+        })),
+      envLoaded: Boolean(
+        (process.env.COINBASE_API_KEY_ID ?? process.env.COINBASE_KEY_NAME)?.trim(),
+      ),
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      error: String((e as Error)?.message ?? e),
+      liveEquity: null,
+      envLoaded: Boolean(
+        (process.env.COINBASE_API_KEY_ID ?? process.env.COINBASE_KEY_NAME)?.trim(),
+      ),
+    };
+  }
+}
+
 async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
   if (url.pathname === "/api/status") {
-    return json(res, statusPayload());
+    const status = statusPayload();
+    // Attach live equity so a stale /api/book handler can't blank the hero
+    const book = await liveBookPayload();
+    return json(res, { ...status, book });
   }
   if (url.pathname === "/api/sessions") {
     return json(res, { sessions: listSessions() });
@@ -164,31 +217,7 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
     });
   }
   if (url.pathname === "/api/book") {
-    try {
-      const { CoinbaseAdvancedClient } = await import("../exchange/coinbase/client.js");
-      const client = new CoinbaseAdvancedClient({ dryRun: true });
-      const book = await client.getBestBidAsk();
-      const mid = (book.bids[0]!.price + book.asks[0]!.price) / 2;
-      const portfolio = await client.portfolioSnapshot(mid);
-      const accounts = await client.listAccounts();
-      return json(res, {
-        ok: true,
-        productId: client.productId,
-        mid,
-        bid: book.bids[0]!.price,
-        ask: book.asks[0]!.price,
-        spreadBps: ((book.asks[0]!.price - book.bids[0]!.price) / mid) * 10_000,
-        tsMs: book.tsMs,
-        liveEquity: portfolio.equity,
-        liveCash: portfolio.cash,
-        liveBtc: portfolio.inventoryQty,
-        balances: accounts
-          .filter((a) => a.available > 0)
-          .map((a) => ({ currency: a.currency, available: a.available })),
-      });
-    } catch (e) {
-      return json(res, { ok: false, error: String((e as Error)?.message ?? e) });
-    }
+    return json(res, await liveBookPayload());
   }
   return json(res, { error: "not found" }, 404);
 }

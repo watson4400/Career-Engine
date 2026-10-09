@@ -36,9 +36,27 @@ describe("CoinbaseAdvancedClient", () => {
         return new Response(
           JSON.stringify({
             accounts: [
-              { uuid: "1", currency: "USD", available_balance: { value: "1000" } },
-              { uuid: "2", currency: "BTC", available_balance: { value: "0.01" } },
+              {
+                uuid: "1",
+                currency: "USD",
+                available_balance: { value: "1000" },
+                hold: { value: "0" },
+              },
+              {
+                uuid: "2",
+                currency: "BTC",
+                available_balance: { value: "0.01" },
+                hold: { value: "0" },
+              },
+              {
+                uuid: "3",
+                currency: "USDC",
+                available_balance: { value: "200" },
+                hold: { value: "0" },
+              },
             ],
+            has_next: false,
+            cursor: "",
           }),
           { status: 200 },
         );
@@ -59,9 +77,12 @@ describe("CoinbaseAdvancedClient", () => {
 
     const mid = 100.1;
     const pf = await client.portfolioSnapshot(mid);
-    expect(pf.cash).toBe(1000);
+    expect(pf.cash).toBe(1200);
     expect(pf.inventoryQty).toBe(0.01);
-    expect(pf.equity).toBeCloseTo(1000 + 0.01 * mid, 5);
+    expect(pf.equity).toBeCloseTo(1200 + 0.01 * mid, 5);
+
+    const accounts = await client.listAccounts();
+    expect(accounts.find((a) => a.currency === "USDC")?.total).toBe(200);
 
     const fill = await client.placeMarket(
       {
@@ -80,5 +101,57 @@ describe("CoinbaseAdvancedClient", () => {
     );
     expect(fill?.id.startsWith("dry-")).toBe(true);
     expect(String(fetchImpl.mock.calls.map((c) => c[0])).includes("/orders")).toBe(false);
+  });
+
+  it("paginates accounts so USDC past page 1 is not dropped", async () => {
+    const fetchImpl = vi.fn(async (url: string) => {
+      const u = String(url);
+      if (u.includes("cursor=page2")) {
+        return new Response(
+          JSON.stringify({
+            accounts: [
+              {
+                uuid: "usdc",
+                currency: "USDC",
+                available_balance: { value: "200.000098" },
+                hold: { value: "0" },
+              },
+            ],
+            has_next: false,
+            cursor: "",
+          }),
+          { status: 200 },
+        );
+      }
+      if (u.includes("/accounts")) {
+        return new Response(
+          JSON.stringify({
+            accounts: [
+              {
+                uuid: "dust",
+                currency: "ETH",
+                available_balance: { value: "0" },
+                hold: { value: "0" },
+              },
+            ],
+            has_next: true,
+            cursor: "page2",
+          }),
+          { status: 200 },
+        );
+      }
+      throw new Error(`unexpected ${url}`);
+    }) as unknown as typeof fetch;
+
+    const client = new CoinbaseAdvancedClient({
+      jwtFn: async () => "test.jwt",
+      fetchImpl,
+      dryRun: true,
+    });
+    const accounts = await client.listAccounts();
+    expect(accounts).toHaveLength(2);
+    const pf = await client.portfolioSnapshot(100_000);
+    expect(pf.cash).toBeCloseTo(200.000098, 6);
+    expect(pf.equity).toBeCloseTo(200.000098, 6);
   });
 });
