@@ -20,10 +20,12 @@
     }
   },
   "code_gates": {
-    "min_setup_quality": 2,
+    "min_setup_quality": 2.5,
     "min_direction_confidence": 0.8,
-    "risk_state_required": "safe",
+    "risk_state_required": "safe_or_reduce_flatten",
     "kelly_cap": 0.25,
+    "kelly_cost_haircut": 0.5,
+    "probability_shrink": 0.55,
     "escalate_if_confidence_below": 0.6,
     "escalate_if_regime": "crisis"
   }

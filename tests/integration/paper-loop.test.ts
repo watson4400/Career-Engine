@@ -3,37 +3,37 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { JevClient } from "../../src/jev/client.js";
-import { runPaperLoop } from "../../src/loop/live-loop.js";
-import type { JevDecision } from "../../src/types/index.js";
-
-const ok: JevDecision = {
-  regime: { type: "choice", choice: "trending", confidence: 0.9, probabilities: { trending: 0.9 } },
-  direction: {
-    type: "choice",
-    choice: "long",
-    confidence: 0.88,
-    probabilities: { long: 0.88, short: 0.02, neutral: 0.1 },
-  },
-  toxic_flow: { type: "noul", noul: 0.15 },
-  setup_quality: { type: "score", score: 2.4, confidence: 0.9 },
-  risk_state: { type: "choice", choice: "safe", confidence: 0.9, probabilities: { safe: 0.9 } },
-};
+import { paperTrainerDecide } from "../../src/jev/paper-trainer.js";
+import { runPaperLoop, synthesizeWorld } from "../../src/loop/live-loop.js";
+import { brierScore } from "../../src/review/brier.js";
 
 describe("paper loop", () => {
-  it("runs end-to-end with mocked Jev", async () => {
+  it("runs paper trainer with causal edge and controlled risk", async () => {
     const outDir = mkdtempSync(join(tmpdir(), "sess-"));
-    const jev = new JevClient({ mockDecide: async () => ok });
+    const jev = new JevClient({
+      mockDecide: async (state) => paperTrainerDecide(state),
+    });
+    const world = synthesizeWorld(180, 83_000, 42);
     const result = await runPaperLoop(
       {
         sessionId: "test",
         schemaId: "btc_regime_beta",
         symbol: "BTCUSDT",
-        candles: 12,
+        candles: 180,
         outDir,
       },
       jev,
+      world.mids,
+      world.signals,
     );
-    expect(result.orders).toBeGreaterThan(0);
     expect(result.equity).toBeGreaterThan(0);
+    expect(result.maxDrawdownPct).toBeLessThan(0.15);
+    expect(result.reasonCounts["block:max_position"] ?? 0).toBeLessThan(10);
+    expect(result.escalations).toBe(0);
+    expect(result.holds + result.orders + result.blocks + result.escalations).toBe(180);
+    if (result.labeledPredictions >= 10) {
+      const brier = brierScore(result.brierReady);
+      expect(brier).toBeLessThan(0.3);
+    }
   });
 });

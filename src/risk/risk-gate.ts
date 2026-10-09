@@ -43,12 +43,16 @@ export class RiskGate {
       return { ok: false, reason: "notional_exceeds_quarter_kelly" };
     }
 
-    const nextNotional = intent.notionalPct * portfolio.equity;
-    const projectedInventoryNotional =
-      Math.abs(portfolio.inventoryQty * mid) + nextNotional;
-    const projectedPct =
-      portfolio.equity > 0 ? projectedInventoryNotional / portfolio.equity : 1;
-    if (projectedPct > RISK.maxPositionNotionalPct) {
+    if (intent.notionalPct > 0 && intent.notionalPct < RISK.minOrderNotionalPct) {
+      return { ok: false, reason: "dust_order" };
+    }
+
+    // Signed projection: reducing inventory must not be blocked as "adding"
+    const currentNotional = portfolio.inventoryQty * mid;
+    const delta = (intent.side === "buy" ? 1 : -1) * intent.notionalPct * portfolio.equity;
+    const projectedAbs = Math.abs(currentNotional + delta);
+    const projectedPct = portfolio.equity > 0 ? projectedAbs / portfolio.equity : 1;
+    if (projectedPct > RISK.maxPositionNotionalPct + 1e-9) {
       return { ok: false, reason: `max_position ${projectedPct}` };
     }
 

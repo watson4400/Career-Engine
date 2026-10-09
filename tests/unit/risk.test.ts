@@ -61,4 +61,17 @@ describe("RiskGate", () => {
     const r = gate.authorize({ ...intent, notionalPct: 0.5 }, pf(), 80_000);
     expect(r.ok).toBe(false);
   });
+
+  it("allows reducing sell when long near max", () => {
+    const kill = new KillSwitch(path);
+    kill.disarm("test");
+    const gate = new RiskGate(kill);
+    const longQty = (0.24 * 100_000) / 80_000;
+    const r = gate.authorize(
+      { ...intent, side: "sell", notionalPct: 0.1 },
+      pf({ inventoryQty: longQty, cash: 100_000 - longQty * 80_000 }),
+      80_000,
+    );
+    expect(r.ok).toBe(true);
+  });
 });
