@@ -1,0 +1,9 @@
+{
+  "phase": 3,
+  "name": "plan",
+  "artifact": "docs/plans/001-test-first-build-plan.md",
+  "approved": false,
+  "approved_by": null,
+  "approved_at": null,
+  "notes": "Operator approval required."
+}

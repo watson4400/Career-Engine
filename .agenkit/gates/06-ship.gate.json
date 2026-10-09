@@ -1,0 +1,9 @@
+{
+  "phase": 6,
+  "name": "ship",
+  "artifact": "docs/ship/001-ship-checklist.md",
+  "approved": false,
+  "approved_by": null,
+  "approved_at": null,
+  "notes": "Live trading requires this gate + LIVE_TRADING=true + kill switch intentionally disarmed."
+}

@@ -1,0 +1,9 @@
+{
+  "phase": 2,
+  "name": "architecture",
+  "artifact": "docs/architecture/001-system-architecture.md",
+  "approved": false,
+  "approved_by": null,
+  "approved_at": null,
+  "notes": "Operator approval required before treating architecture as frozen."
+}

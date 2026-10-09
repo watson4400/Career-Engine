@@ -1,0 +1,30 @@
+{
+  "description": "Parallel Jev questions scored every candle. Thresholds live in src/config/constants.ts — not here.",
+  "questions": {
+    "regime": {
+      "type": "choice",
+      "criteria_keys": ["trending", "mean_reverting", "high_vol", "crisis"]
+    },
+    "direction": {
+      "type": "choice",
+      "criteria_keys": ["long", "short", "neutral"]
+    },
+    "toxic_flow": { "type": "noul" },
+    "setup_quality": {
+      "type": "score",
+      "scale": [0, 1, 2, 3]
+    },
+    "risk_state": {
+      "type": "choice",
+      "criteria_keys": ["safe", "near_limit", "reduce"]
+    }
+  },
+  "code_gates": {
+    "min_setup_quality": 2,
+    "min_direction_confidence": 0.8,
+    "risk_state_required": "safe",
+    "kelly_cap": 0.25,
+    "escalate_if_confidence_below": 0.6,
+    "escalate_if_regime": "crisis"
+  }
+}
