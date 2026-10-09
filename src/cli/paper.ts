@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { JevClient } from "../jev/client.js";
@@ -6,13 +7,18 @@ import { runPaperLoop, synthesizeWorld } from "../loop/live-loop.js";
 import { runOvernightReview } from "../review/overnight.js";
 import type { Fill } from "../types/index.js";
 
+function envKey(name: "TYPESAFE_API_KEY" | "JEV_API_KEY"): string | undefined {
+  const v = process.env[name]?.trim();
+  return v ? v : undefined;
+}
+
 async function main(): Promise<void> {
   const candles = Number(process.env.PAPER_CANDLES ?? 240);
   const sessionId = `paper-${new Date().toISOString().replace(/[:.]/g, "-")}`;
   const outDir = join("data/sessions", sessionId);
   mkdirSync(outDir, { recursive: true });
 
-  const useLiveJev = Boolean(process.env.TYPESAFE_API_KEY || process.env.JEV_API_KEY);
+  const useLiveJev = Boolean(envKey("TYPESAFE_API_KEY") || envKey("JEV_API_KEY"));
   const jev = useLiveJev
     ? new JevClient()
     : new JevClient({
