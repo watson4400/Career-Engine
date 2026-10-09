@@ -103,6 +103,53 @@ describe("CoinbaseAdvancedClient", () => {
     expect(String(fetchImpl.mock.calls.map((c) => c[0])).includes("/orders")).toBe(false);
   });
 
+  it("marks SOL inventory when product is SOL-USD (not BTC×SOL mid)", async () => {
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (String(url).includes("/accounts")) {
+        return new Response(
+          JSON.stringify({
+            accounts: [
+              {
+                uuid: "1",
+                currency: "USDC",
+                available_balance: { value: "200" },
+                hold: { value: "0" },
+              },
+              {
+                uuid: "2",
+                currency: "SOL",
+                available_balance: { value: "1.5" },
+                hold: { value: "0" },
+              },
+              {
+                uuid: "3",
+                currency: "BTC",
+                available_balance: { value: "0.01" },
+                hold: { value: "0" },
+              },
+            ],
+            has_next: false,
+            cursor: "",
+          }),
+          { status: 200 },
+        );
+      }
+      throw new Error(`unexpected ${url}`);
+    }) as unknown as typeof fetch;
+
+    const client = new CoinbaseAdvancedClient({
+      jwtFn: async () => "test.jwt",
+      fetchImpl,
+      dryRun: true,
+      productId: "SOL-USD",
+    });
+    expect(client.baseCurrency()).toBe("SOL");
+    const pf = await client.portfolioSnapshot(150);
+    expect(pf.inventoryQty).toBe(1.5);
+    expect(pf.cash).toBe(200);
+    expect(pf.equity).toBeCloseTo(200 + 1.5 * 150, 5);
+  });
+
   it("paginates accounts so USDC past page 1 is not dropped", async () => {
     const fetchImpl = vi.fn(async (url: string) => {
       const u = String(url);

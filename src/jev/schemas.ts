@@ -93,6 +93,30 @@ export const FINALISTS: FinalistSchema[] = [
   { id: "ldo_accrual_watch", symbol: "LDOUSDT", thesis: "TVL giant weak claim — watch", priority: 10, autoSize: false },
 ];
 
+/** Map Coinbase product (SOL-USD) or engine symbol (SOLUSDT) → finalist schema. */
+export function schemaForProduct(productOrSymbol: string): FinalistSchema {
+  const raw = productOrSymbol.trim().toUpperCase();
+  const engine = raw.includes("-")
+    ? `${raw.split("-")[0]}USDT`
+    : raw.endsWith("USDT")
+      ? raw
+      : `${raw}USDT`;
+  const hit = FINALISTS.find((f) => f.symbol === engine);
+  if (hit) return hit;
+  return FINALISTS[0]!;
+}
+
+export function resolveSchemaId(opts?: {
+  schemaId?: string;
+  productId?: string;
+}): string {
+  const fromEnv = process.env.COINBASE_SCHEMA_ID?.trim();
+  if (opts?.schemaId?.trim()) return opts.schemaId.trim();
+  if (fromEnv) return fromEnv;
+  const product = opts?.productId ?? process.env.COINBASE_PRODUCT_ID ?? "BTC-USD";
+  return schemaForProduct(product).id;
+}
+
 export function questionsForSchema(schemaId: string): JevQuestionMap {
   return {
     ...CORE_DECISION_QUESTIONS,

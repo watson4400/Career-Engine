@@ -150,13 +150,16 @@ async function liveBookPayload(): Promise<Record<string, unknown>> {
     const cash = accounts
       .filter((a) => a.currency === "USD" || a.currency === "USDC")
       .reduce((s, a) => s + a.total, 0);
-    const liveBtc = accounts
-      .filter((a) => a.currency === "BTC")
+    const base = client.baseCurrency();
+    const liveInventory = accounts
+      .filter((a) => a.currency === base)
       .reduce((s, a) => s + a.total, 0);
-    const liveEquity = cash + liveBtc * mid;
+    // Equity = stables + marked inventory of the configured product base (not BTC×alt mid).
+    const liveEquity = cash + liveInventory * mid;
     return {
       ok: true,
       productId: client.productId,
+      base,
       mid,
       bid: book.bids[0]!.price,
       ask: book.asks[0]!.price,
@@ -164,7 +167,8 @@ async function liveBookPayload(): Promise<Record<string, unknown>> {
       tsMs: book.tsMs,
       liveEquity,
       liveCash: cash,
-      liveBtc,
+      liveInventory,
+      liveBtc: base === "BTC" ? liveInventory : 0,
       balances: accounts
         .filter((a) => a.total > 0)
         .map((a) => ({

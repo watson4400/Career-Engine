@@ -86,6 +86,12 @@ describe("policy gates", () => {
     expect(evaluatePolicy(decision({ setup: 2.1 }), baseSnap).action).toBe("hold");
   });
 
+  it("allows wider spreads on alt sleeves than BTC", () => {
+    const altSnap = { ...baseSnap, symbol: "SOLUSDT", schemaId: "sol_fee_beta", mid: 150, spreadBps: 40 };
+    expect(evaluatePolicy(decision(), altSnap).action).toBe("order");
+    expect(evaluatePolicy(decision(), { ...baseSnap, spreadBps: 40 }).action).toBe("hold");
+  });
+
   it("escalates on crisis", () => {
     expect(evaluatePolicy(decision({ regime: "crisis" }), baseSnap).action).toBe("escalate");
   });

@@ -6,7 +6,7 @@ import { isLiveTrading } from "../config/constants.js";
 import { CoinbaseAdvancedClient, productToEngineSymbol } from "../exchange/coinbase/client.js";
 import { JevClient } from "../jev/client.js";
 import { paperTrainerDecide } from "../jev/paper-trainer.js";
-import { questionsForSchema } from "../jev/schemas.js";
+import { questionsForSchema, resolveSchemaId } from "../jev/schemas.js";
 import { evaluatePolicy } from "../policy/gates.js";
 import { buildFlattenIntent } from "../risk/flatten.js";
 import { KillSwitch } from "../risk/kill-switch.js";
@@ -38,7 +38,7 @@ export async function runCoinbaseLoop(cfg: CoinbaseLoopConfig): Promise<Record<s
   const liveOrders = isLiveTrading() && !dryRun;
   const client = new CoinbaseAdvancedClient({ dryRun: !liveOrders });
   const engineSymbol = productToEngineSymbol(client.productId);
-  const schemaId = cfg.schemaId ?? "btc_regime_beta";
+  const schemaId = resolveSchemaId({ schemaId: cfg.schemaId, productId: client.productId });
 
   const kill = new KillSwitch(globalKillPath());
   if (liveOrders) {

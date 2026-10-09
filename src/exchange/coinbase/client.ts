@@ -94,24 +94,29 @@ export class CoinbaseAdvancedClient {
     return out;
   }
 
-  async portfolioSnapshot(btcPrice: number): Promise<PortfolioState> {
+  /** Base asset of the configured product (BTC-USD → BTC, SOL-USD → SOL). */
+  baseCurrency(): string {
+    return (this.productId.split("-")[0] ?? "BTC").toUpperCase();
+  }
+
+  async portfolioSnapshot(mid: number): Promise<PortfolioState> {
     const accounts = await this.listAccounts();
     // Sum USD + USDC (deposits often land in USDC). Use available+hold so equity isn't zero during holds.
     const cash = accounts
       .filter((a) => a.currency === "USD" || a.currency === "USDC")
       .reduce((s, a) => s + a.total, 0);
-    const btc = accounts
-      .filter((a) => a.currency === "BTC")
+    const base = this.baseCurrency();
+    const inventoryQty = accounts
+      .filter((a) => a.currency === base)
       .reduce((s, a) => s + a.total, 0);
-    const inventoryQty = btc;
-    const equity = cash + inventoryQty * btcPrice;
-    // Keep a tiny floor for risk math only when truly empty — dashboard shows raw cash via /api/book.
+    // Mark traded base at product mid. Cash-only accounts (typical $200 USDC dry-run) stay accurate.
+    const equity = cash + inventoryQty * mid;
     const eq = Number.isFinite(equity) ? equity : 0;
     return {
       equity: eq > 0 ? eq : 0.01,
       cash,
       inventoryQty,
-      avgEntry: inventoryQty !== 0 ? btcPrice : 0,
+      avgEntry: inventoryQty !== 0 ? mid : 0,
       peakEquity: eq > 0 ? eq : 0.01,
       dayStartEquity: eq > 0 ? eq : 0.01,
       realizedPnlDay: 0,

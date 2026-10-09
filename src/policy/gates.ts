@@ -1,4 +1,4 @@
-import { RISK } from "../config/constants.js";
+import { RISK, maxSpreadBpsForSymbol } from "../config/constants.js";
 import type { JevDecision, MarketSnapshot, PolicyResult } from "../types/index.js";
 import { sizedNotionalPct } from "./kelly.js";
 
@@ -32,8 +32,9 @@ export function evaluatePolicy(decision: JevDecision, snapshot: MarketSnapshot):
     };
   }
 
-  if (snapshot.spreadBps > RISK.maxSpreadBps) {
-    return { action: "hold", reason: `spread ${snapshot.spreadBps}bps > max` };
+  const maxSpread = maxSpreadBpsForSymbol(snapshot.symbol);
+  if (snapshot.spreadBps > maxSpread) {
+    return { action: "hold", reason: `spread ${snapshot.spreadBps}bps > max ${maxSpread}` };
   }
 
   if (toxic >= 0.55) {

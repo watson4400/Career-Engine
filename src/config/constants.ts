@@ -14,11 +14,24 @@ export const RISK = {
   probabilityShrink: 0.55,
   /** Skip dust orders as a fraction of equity. */
   minOrderNotionalPct: 0.005,
+  /** BTC books are tight; alts need more room (override with MAX_SPREAD_BPS). */
   maxSpreadBps: 25,
+  maxSpreadBpsAlt: 60,
   maxSnapshotTokens: 400,
   /** Candles ahead used to label paper prediction outcomes. */
   outcomeHorizonCandles: 5,
 } as const;
+
+/** Effective spread cap for a Coinbase product or engine symbol. */
+export function maxSpreadBpsForSymbol(productOrSymbol: string): number {
+  const env = Number(process.env.MAX_SPREAD_BPS);
+  if (Number.isFinite(env) && env > 0) return env;
+  const upper = productOrSymbol.trim().toUpperCase();
+  const base = upper.includes("-")
+    ? (upper.split("-")[0] ?? "BTC")
+    : upper.replace(/USDT$|USD$/, "") || "BTC";
+  return base === "BTC" ? RISK.maxSpreadBps : RISK.maxSpreadBpsAlt;
+}
 
 export const JEV = {
   model: process.env.JEV_MODEL ?? "jev-latest",

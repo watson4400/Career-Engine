@@ -24,6 +24,8 @@ Add (keep your existing `TYPESAFE_API_KEY`):
 COINBASE_API_KEY_ID=organizations/.../apiKeys/...
 COINBASE_API_KEY_SECRET=paste_secret_here
 COINBASE_PRODUCT_ID=BTC-USD
+# First alt dry-run (liquid only — see ALT_SLEEVE_DRY_RUN.md):
+# COINBASE_PRODUCT_ID=SOL-USD
 COINBASE_DRY_RUN=true
 LIVE_TRADING=false
 ```
@@ -71,7 +73,7 @@ Triple gate — all required:
 2. `LIVE_TRADING=true`
 3. Kill switch **disarmed** for that session (default is armed)
 
-Start tiny. Fund only what you can lose. First week: `BTC-USD` only.
+Start tiny. Fund only what you can lose. First week: `BTC-USD` or liquid `SOL-USD` dry-run only — not micros (see `ALT_SLEEVE_DRY_RUN.md`).
 
 ```bash
 # NOT recommended until you’ve watched dry-runs

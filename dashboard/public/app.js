@@ -171,6 +171,8 @@ function renderLatest(status, book) {
   }
   if (book?.ok) {
     $("stat-mid").textContent = fmtMoney(book.mid);
+    const midLabel = $("stat-mid-label");
+    if (midLabel) midLabel.textContent = `${book.productId ?? "Product"} mid`;
   } else {
     $("stat-mid").textContent = book?.error ? "n/a" : "—";
   }
