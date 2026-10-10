@@ -1,0 +1,8 @@
+{
+  "productId": "SOL-USD",
+  "schemaId": "sol_fee_beta",
+  "dryRun": true,
+  "liveTrading": false,
+  "candles": 8,
+  "intervalMs": 12000
+}

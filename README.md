@@ -8,28 +8,27 @@
 
 ```bash
 npm install
+npm start          # Ops Console → http://127.0.0.1:8787
+```
+
+One command: live equity, product toggles, dry-run / kill switch, **Run / Stop** sessions, and a decision strip that tells you what to do next.  
+See `docs/ship/OPS_CONSOLE.md`.
+
+```bash
 npm test
-npm run paper
+npm run paper      # offline paper trainer (optional)
 ```
 
 ### Coinbase Advanced (dry-run by default)
 
+Put keys in `.env`, then use the console — or CLI:
+
 ```bash
-# add COINBASE_API_KEY_ID + COINBASE_API_KEY_SECRET to .env
 npm run coinbase:doctor   # read-only
-npm run coinbase:live     # live book + simulated orders unless gates flipped
+npm run coinbase:live     # same loop the console Run button starts
 ```
 
-See `docs/ship/COINBASE_ADVANCED_SETUP.md`.
-
-### Local dashboard
-
-```bash
-npm run dashboard
-# open http://127.0.0.1:8787
-```
-
-Shows latest session, safety gates, Coinbase mid (if keys set), session list, and journal.
+See `docs/ship/COINBASE_ADVANCED_SETUP.md` and `docs/ship/ALT_SLEEVE_DRY_RUN.md`.
 
 ## Architecture
 

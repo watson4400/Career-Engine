@@ -1,9 +1,9 @@
 const $ = (id) => document.getElementById(id);
 
+let state = null;
 let selectedId = null;
-/** Last good Coinbase equity — "—" means not loaded, never treat as $0 */
-let lastLiveEquity = null;
-let lastLiveBalances = null;
+let lastEquity = null;
+let busy = false;
 
 function fmtMoney(n) {
   if (n == null || Number.isNaN(Number(n))) return "—";
@@ -13,27 +13,6 @@ function fmtMoney(n) {
   });
 }
 
-function equityFromBook(book) {
-  if (!book || book.ok === false) return null;
-  if (book.liveEquity != null && Number.isFinite(Number(book.liveEquity))) {
-    return Number(book.liveEquity);
-  }
-  // Fallback: sum USD/USDC (+ BTC*mid) from balances if server omitted liveEquity
-  const bals = book.balances || [];
-  if (!bals.length) return null;
-  let cash = 0;
-  let btc = 0;
-  for (const b of bals) {
-    const amt = Number(b.total ?? b.available ?? 0);
-    if (!Number.isFinite(amt)) continue;
-    if (b.currency === "USD" || b.currency === "USDC") cash += amt;
-    if (b.currency === "BTC") btc += amt;
-  }
-  const mid = Number(book.mid);
-  if (!(cash > 0 || btc > 0)) return cash === 0 && btc === 0 ? 0 : null;
-  return cash + (Number.isFinite(mid) ? btc * mid : 0);
-}
-
 function fmtPct(n) {
   if (n == null || Number.isNaN(Number(n))) return "—";
   const v = Number(n) * 100;
@@ -41,11 +20,11 @@ function fmtPct(n) {
   return `${sign}${v.toFixed(2)}%`;
 }
 
-function fmtPnlUsd(n) {
+function fmtPnl(n) {
   if (n == null || Number.isNaN(Number(n))) return "—";
   const v = Number(n);
   const sign = v > 0 ? "+" : "";
-  return `${sign}${v.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+  return `${sign}${fmtMoney(Math.abs(v))}`;
 }
 
 function pnlClass(n) {
@@ -59,163 +38,175 @@ function sessionPnl(s) {
   let pnlPct = s.pnlPct ?? result?.pnlPct ?? summary?.pnlPct;
   let pnlUsd = s.pnlUsd ?? result?.pnlUsd ?? summary?.pnlUsd;
   const equity = s.equity ?? result?.equity ?? summary?.equity;
-  const start =
-    s.startingEquity ?? result?.startingEquity ?? summary?.startingEquity;
-
-  if (pnlUsd == null && equity != null && start != null) {
-    pnlUsd = Number(equity) - Number(start);
-  }
+  const start = s.startingEquity ?? result?.startingEquity ?? summary?.startingEquity;
+  if (pnlUsd == null && equity != null && start != null) pnlUsd = Number(equity) - Number(start);
   if (pnlPct == null && equity != null && start != null && Number(start) > 0) {
     pnlPct = (Number(equity) - Number(start)) / Number(start);
-  }
-  if (pnlUsd == null && pnlPct != null && equity != null) {
-    // derive approx USD from pct when start unknown
-    const startEst = Number(equity) / (1 + Number(pnlPct));
-    if (Number.isFinite(startEst)) pnlUsd = Number(equity) - startEst;
   }
   return { pnlPct, pnlUsd };
 }
 
-function gate(label, state) {
-  const el = document.createElement("span");
-  el.className = `gate ${state}`;
-  el.textContent = label;
-  return el;
+async function api(path, opts) {
+  const res = await fetch(path, {
+    headers: { "Content-Type": "application/json" },
+    ...opts,
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
 }
 
-function renderGates(status) {
-  const row = $("gates");
+function renderProducts(consoleData) {
+  const row = $("products");
   row.innerHTML = "";
-  const f = status.flags;
-  row.append(
-    gate(f.liveTrading ? "LIVE_TRADING on" : "LIVE_TRADING off", f.liveTrading ? "off" : "on"),
-    gate(
-      f.coinbaseDryRun ? "COINBASE dry-run" : "COINBASE live orders",
-      f.coinbaseDryRun ? "on" : "off",
-    ),
-    gate(
-      status.killSwitch.armed
-        ? `Kill ARMED${status.killSwitch.reason ? ": " + status.killSwitch.reason : ""}`
-        : "Kill switch disarmed",
-      status.killSwitch.armed ? "warn" : "off",
-    ),
-    gate(f.hasTypesafe ? "Jev key set" : "Jev key missing", f.hasTypesafe ? "on" : "warn"),
-    gate(f.hasCoinbase ? "Coinbase key set" : "Coinbase key missing", f.hasCoinbase ? "on" : "warn"),
-    gate(`Product ${f.productId}`, "on"),
-  );
-}
-
-function renderPnl(pnlUsd, pnlPct) {
-  const el = $("stat-pnl");
-  const elPct = $("stat-pnl-pct");
-  el.className = `stat-value mono ${pnlClass(pnlUsd ?? pnlPct)}`;
-  elPct.className = `stat-sub mono ${pnlClass(pnlPct ?? pnlUsd)}`;
-  el.textContent = fmtPnlUsd(pnlUsd);
-  elPct.textContent = pnlPct == null ? "—" : fmtPct(pnlPct);
-}
-
-function renderLatest(status, book) {
-  const latest = status.latest;
-  $("clock").textContent = new Date(status.now).toLocaleString();
-
-  // Live Coinbase equity (real account) — not paper's 100k.
-  // Em-dash means "not loaded" — it is NOT zero. Doctor equity is the source of truth until this loads.
-  const merged = book?.ok ? book : status.book?.ok ? status.book : book;
-  const eq = equityFromBook(merged);
-  if (eq != null) {
-    lastLiveEquity = eq;
-    lastLiveBalances = merged.balances || null;
-    $("stat-equity").textContent = fmtMoney(eq);
-    const bal = (merged.balances || [])
-      .map((b) => `${b.currency} ${fmtMoney(b.total ?? b.available)}`)
-      .join(" · ");
-    $("stat-equity-sub").textContent =
-      bal || `cash ${fmtMoney(merged.liveCash ?? eq)} · not zero`;
-  } else if (lastLiveEquity != null) {
-    $("stat-equity").textContent = fmtMoney(lastLiveEquity);
-    $("stat-equity-sub").textContent = merged?.error
-      ? `stale · ${String(merged.error).slice(0, 60)}`
-      : "stale (last good) · not zero";
-  } else if (merged?.ok && merged.mid != null && merged.liveEquity == null) {
-    $("stat-equity").textContent = "—";
-    $("stat-equity-sub").textContent = "Restart dashboard — not $0";
-  } else {
-    $("stat-equity").textContent = "—";
-    $("stat-equity-sub").textContent = merged?.error
-      ? `not loaded · ${String(merged.error).slice(0, 70)}`
-      : status.flags?.hasCoinbase === false
-        ? "not loaded · Coinbase keys missing in dashboard .env"
-        : "not loaded · waiting for Coinbase (not $0)";
-  }
-
-  if (!latest) {
-    $("latest-mode").textContent = "No sessions yet";
-    $("latest-sub").textContent = "Run npm run paper or npm run coinbase:live";
-    $("stat-orders").textContent = "—";
-    renderPnl(null, null);
-  } else {
-    const mode = latest.mode ?? latest.summary?.mode ?? "session";
-    $("latest-mode").textContent = String(mode);
-    const { pnlPct, pnlUsd } = sessionPnl(latest);
-    const bits = [
-      latest.id,
-      latest.jev ? `jev:${latest.jev}` : null,
-      latest.productId ? `product:${latest.productId}` : null,
-      latest.equity != null ? `session equity ${fmtMoney(latest.equity)}` : null,
-      latest.brier != null ? `brier:${Number(latest.brier).toFixed(3)}` : null,
-    ].filter(Boolean);
-    $("latest-sub").textContent = bits.join(" · ");
-    $("stat-orders").textContent = `${latest.orders ?? "—"} / ${latest.holds ?? "—"}`;
-    renderPnl(pnlUsd, pnlPct);
-    if (!selectedId) selectedId = latest.id;
-  }
-  if (book?.ok) {
-    $("stat-mid").textContent = fmtMoney(book.mid);
-    const midLabel = $("stat-mid-label");
-    if (midLabel) midLabel.textContent = `${book.productId ?? "Product"} mid`;
-  } else {
-    $("stat-mid").textContent = book?.error ? "n/a" : "—";
-  }
-}
-
-function renderSessions(sessions) {
-  $("session-count").textContent = String(sessions.length);
-  const ul = $("session-list");
-  ul.innerHTML = "";
-  for (const s of sessions.slice(0, 30)) {
-    const li = document.createElement("li");
-    if (s.id === selectedId) li.classList.add("active");
-    const { pnlPct, pnlUsd } = sessionPnl(s);
-    const pnlBit =
-      pnlUsd != null
-        ? ` · P&L ${fmtPnlUsd(pnlUsd)} (${fmtPct(pnlPct)})`
-        : pnlPct != null
-          ? ` · P&L ${fmtPct(pnlPct)}`
-          : "";
+  for (const p of consoleData.products) {
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.innerHTML = `<div class="sid">${s.id}</div><div class="muted">${s.mode ?? "—"} · orders ${s.orders ?? 0} · holds ${s.holds ?? 0}${pnlBit}</div>`;
+    btn.className = "product" + (p.id === consoleData.config.productId ? " active" : "");
+    btn.innerHTML = `<strong>${p.label}</strong><small>${p.blurb}</small>`;
+    btn.disabled = Boolean(consoleData.runner?.running);
+    btn.addEventListener("click", async () => {
+      if (busy || consoleData.runner?.running) return;
+      busy = true;
+      try {
+        const data = await api("/api/control/config", {
+          method: "POST",
+          body: JSON.stringify({ productId: p.id }),
+        });
+        paint(data.console);
+      } catch (e) {
+        alert(String(e.message || e));
+      } finally {
+        busy = false;
+      }
+    });
+    row.append(btn);
+  }
+}
+
+function renderDecision(consoleData) {
+  const d = consoleData.decision;
+  const hero = document.querySelector(".hero-copy");
+  hero.classList.remove("tone-go", "tone-wait", "tone-warn", "tone-danger");
+  hero.classList.add(`tone-${d.tone}`);
+  $("decision-tone").textContent =
+    d.tone === "go" ? "Go" : d.tone === "danger" ? "Risk" : d.tone === "warn" ? "Blocked" : "Wait";
+  $("decision-title").textContent = d.title;
+  $("decision-detail").textContent = d.detail;
+
+  const primary = $("btn-primary");
+  const stop = $("btn-stop");
+  const running = Boolean(consoleData.runner?.running);
+
+  stop.hidden = !running;
+  if (running) {
+    primary.hidden = true;
+    stop.onclick = () => controlStop();
+  } else {
+    primary.hidden = false;
+    if (d.primaryAction === "run") {
+      primary.textContent = consoleData.config.dryRun ? "Run dry session" : "Run LIVE session";
+      primary.className = "btn " + (consoleData.config.dryRun ? "primary" : "danger");
+      primary.disabled = false;
+      primary.onclick = () => controlRun();
+    } else if (d.primaryAction === "disarm_kill") {
+      primary.textContent = "Disarm kill switch";
+      primary.className = "btn primary";
+      primary.disabled = false;
+      primary.onclick = () => setKill(false);
+    } else if (d.primaryAction === "fix_keys") {
+      primary.textContent = "Retry connection";
+      primary.className = "btn primary";
+      primary.disabled = false;
+      primary.onclick = () => refresh();
+    } else {
+      primary.textContent = "Waiting…";
+      primary.className = "btn ghost";
+      primary.disabled = true;
+      primary.onclick = null;
+    }
+  }
+}
+
+function renderEquity(consoleData) {
+  const book = consoleData.book;
+  if (book?.ok && book.liveEquity != null) {
+    lastEquity = book.liveEquity;
+    $("equity").textContent = `$${fmtMoney(book.liveEquity)}`;
+    const bal = (book.balances || [])
+      .map((b) => `${b.currency} ${fmtMoney(b.total ?? b.available)}`)
+      .join(" · ");
+    $("equity-sub").textContent = bal || `cash $${fmtMoney(book.liveCash)}`;
+    const spread =
+      book.spreadBps != null
+        ? `spread ${Number(book.spreadBps).toFixed(1)} bps${book.spreadOk === false ? " · wide" : ""}`
+        : "";
+    $("mid-line").textContent = `${book.productId} mid $${fmtMoney(book.mid)}${spread ? " · " + spread : ""}`;
+  } else if (lastEquity != null) {
+    $("equity").textContent = `$${fmtMoney(lastEquity)}`;
+    $("equity-sub").textContent = book?.error
+      ? `stale · ${String(book.error).slice(0, 70)}`
+      : "stale · last good (not $0)";
+    $("mid-line").textContent = "—";
+  } else {
+    $("equity").textContent = "—";
+    $("equity-sub").textContent = book?.error
+      ? `not loaded · ${String(book.error).slice(0, 80)}`
+      : "not loaded · not $0";
+    $("mid-line").textContent = "—";
+  }
+}
+
+function renderStrip(consoleData) {
+  const latest = consoleData.latest;
+  const running = consoleData.runner?.running;
+  $("stat-mode").textContent = running
+    ? consoleData.config.dryRun
+      ? "dry-run · live"
+      : "LIVE · running"
+    : latest?.mode ?? "idle";
+  if (latest) {
+    const { pnlUsd, pnlPct } = sessionPnl(latest);
+    const el = $("stat-pnl");
+    el.textContent = `${fmtPnl(pnlUsd)} (${fmtPct(pnlPct)})`;
+    el.className = `mono ${pnlClass(pnlUsd ?? pnlPct)}`;
+    $("stat-orders").textContent = `${latest.orders ?? "—"} / ${latest.holds ?? "—"}`;
+  } else {
+    $("stat-pnl").textContent = "—";
+    $("stat-pnl").className = "mono";
+    $("stat-orders").textContent = "—";
+  }
+  $("stat-dry").textContent = String(consoleData.drySessionCount ?? 0);
+}
+
+function renderSessions(consoleData) {
+  const sessions = consoleData.sessions || [];
+  $("session-count").textContent = String(consoleData.sessionCount ?? sessions.length);
+  const ul = $("session-list");
+  ul.innerHTML = "";
+  for (const s of sessions.slice(0, 24)) {
+    const li = document.createElement("li");
+    if (s.id === selectedId) li.classList.add("active");
+    const { pnlUsd, pnlPct } = sessionPnl(s);
+    const pnlBit =
+      pnlUsd != null ? ` · ${fmtPnl(pnlUsd)} (${fmtPct(pnlPct)})` : pnlPct != null ? ` · ${fmtPct(pnlPct)}` : "";
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.innerHTML = `<div class="sid">${s.id}</div><div class="muted">${s.productId ?? s.mode ?? "—"} · orders ${s.orders ?? 0}${pnlBit}</div>`;
     btn.addEventListener("click", () => {
       selectedId = s.id;
-      loadJournal(s.id);
-      renderSessions(sessions);
-      // Update session P&L / mode — do NOT overwrite live Coinbase equity
-      const { pnlPct: p, pnlUsd: u } = sessionPnl(s);
-      $("latest-mode").textContent = String(s.mode ?? "session");
-      $("latest-sub").textContent = `${s.id} · session equity ${fmtMoney(s.equity)}`;
-      $("stat-orders").textContent = `${s.orders ?? "—"} / ${s.holds ?? "—"}`;
-      renderPnl(u, p);
+      loadTape(s.id);
+      renderSessions(consoleData);
     });
     li.append(btn);
     ul.append(li);
   }
 }
 
-function renderJournal(payload) {
-  $("journal-session").textContent = payload.id;
-  const ol = $("journal");
+function renderTape(rows, meta) {
+  $("tape-meta").textContent = meta || "—";
+  const ol = $("tape");
   ol.innerHTML = "";
-  const rows = [...(payload.journal ?? [])].reverse();
   for (const row of rows) {
     const li = document.createElement("li");
     const action = row.action ?? "event";
@@ -226,40 +217,190 @@ function renderJournal(payload) {
   }
   if (!rows.length) {
     const li = document.createElement("li");
-    li.innerHTML = `<div class="muted">No journal lines</div>`;
+    li.innerHTML = `<div class="muted">No tape yet — run a session.</div>`;
     ol.append(li);
   }
 }
 
-async function loadJournal(id) {
-  const res = await fetch(`/api/sessions/${encodeURIComponent(id)}?limit=60`);
-  const data = await res.json();
-  renderJournal(data);
+function renderRunnerLog(consoleData) {
+  const log = consoleData.runner?.log || [];
+  const el = $("runner-log");
+  if (!log.length && !consoleData.runner?.running) {
+    el.hidden = true;
+    return;
+  }
+  el.hidden = false;
+  el.textContent = log.slice().reverse().join("\n");
+}
+
+function syncControls(consoleData) {
+  const dry = $("tog-dry");
+  const kill = $("tog-kill");
+  const candles = $("inp-candles");
+  dry.checked = consoleData.config.dryRun !== false;
+  kill.checked = Boolean(consoleData.killSwitch?.armed);
+  candles.value = String(consoleData.config.candles ?? 8);
+  dry.disabled = Boolean(consoleData.runner?.running);
+  candles.disabled = Boolean(consoleData.runner?.running);
+
+  const pill = $("run-pill");
+  if (consoleData.runner?.running) {
+    pill.textContent = consoleData.config.dryRun ? "RUNNING" : "LIVE";
+    pill.className = "pill " + (consoleData.config.dryRun ? "run" : "live");
+  } else {
+    pill.textContent = "IDLE";
+    pill.className = "pill idle";
+  }
+  $("clock").textContent = new Date(consoleData.now).toLocaleString();
+}
+
+function paint(consoleData) {
+  state = consoleData;
+  renderProducts(consoleData);
+  renderDecision(consoleData);
+  renderEquity(consoleData);
+  renderStrip(consoleData);
+  renderSessions(consoleData);
+  renderRunnerLog(consoleData);
+  syncControls(consoleData);
+  if (!selectedId && consoleData.latest?.id) selectedId = consoleData.latest.id;
+  if (selectedId) loadTape(selectedId);
+}
+
+async function loadTape(id) {
+  try {
+    const data = await api(`/api/sessions/${encodeURIComponent(id)}?limit=40`);
+    const rows = [...(data.journal ?? [])].reverse();
+    renderTape(rows, id);
+  } catch {
+    renderTape([], id);
+  }
 }
 
 async function refresh() {
-  const [statusRes, sessionsRes, bookRes] = await Promise.all([
-    fetch("/api/status"),
-    fetch("/api/sessions"),
-    fetch("/api/book"),
-  ]);
-  const status = await statusRes.json();
-  const { sessions } = await sessionsRes.json();
-  let book = null;
   try {
-    book = await bookRes.json();
-  } catch {
-    book = { ok: false, error: "book parse failed" };
+    const data = await api("/api/console");
+    paint(data);
+  } catch (e) {
+    $("decision-title").textContent = "Console offline";
+    $("decision-detail").textContent = String(e.message || e);
   }
-  // Prefer dedicated book; fall back to status.book (same payload, newer servers)
-  if ((!book || book.ok === false) && status.book?.ok) {
-    book = status.book;
-  }
-  renderGates(status);
-  renderLatest(status, book);
-  renderSessions(sessions);
-  if (selectedId) await loadJournal(selectedId);
 }
 
+async function controlRun() {
+  if (busy) return;
+  busy = true;
+  try {
+    const candles = Number($("inp-candles").value || 8);
+    const body = { candles };
+    if (state && !state.config.dryRun && state.config.liveTrading) {
+      body.confirmLive = "LIVE";
+    }
+    const data = await api("/api/control/run", { method: "POST", body: JSON.stringify(body) });
+    paint(data.console);
+  } catch (e) {
+    alert(String(e.message || e));
+  } finally {
+    busy = false;
+  }
+}
+
+async function controlStop() {
+  if (busy) return;
+  busy = true;
+  try {
+    const data = await api("/api/control/stop", { method: "POST", body: "{}" });
+    paint(data.console);
+  } catch (e) {
+    alert(String(e.message || e));
+  } finally {
+    busy = false;
+  }
+}
+
+async function setKill(armed) {
+  if (busy) return;
+  busy = true;
+  try {
+    const data = await api("/api/control/kill", {
+      method: "POST",
+      body: JSON.stringify({ armed, reason: armed ? "operator-armed" : "operator-disarmed" }),
+    });
+    paint(data.console);
+  } catch (e) {
+    alert(String(e.message || e));
+  } finally {
+    busy = false;
+  }
+}
+
+$("tog-kill").addEventListener("change", (e) => {
+  setKill(Boolean(e.target.checked));
+});
+
+$("tog-dry").addEventListener("change", async (e) => {
+  if (busy) return;
+  const wantDry = Boolean(e.target.checked);
+  if (wantDry) {
+    busy = true;
+    try {
+      const data = await api("/api/control/config", {
+        method: "POST",
+        body: JSON.stringify({ dryRun: true, liveTrading: false }),
+      });
+      paint(data.console);
+    } catch (err) {
+      alert(String(err.message || err));
+      e.target.checked = !wantDry;
+    } finally {
+      busy = false;
+    }
+    return;
+  }
+  // turning dry-run off → confirm LIVE
+  e.target.checked = true;
+  const dialog = $("live-dialog");
+  $("live-confirm").value = "";
+  dialog.showModal();
+});
+
+$("live-form").addEventListener("close", async () => {
+  const dialog = $("live-dialog");
+  if (dialog.returnValue !== "ok") return;
+  const typed = $("live-confirm").value.trim();
+  if (typed !== "LIVE") {
+    alert('Type LIVE exactly to enable live orders.');
+    return;
+  }
+  busy = true;
+  try {
+    const data = await api("/api/control/config", {
+      method: "POST",
+      body: JSON.stringify({ dryRun: false, liveTrading: true, confirmLive: "LIVE" }),
+    });
+    paint(data.console);
+  } catch (err) {
+    alert(String(err.message || err));
+  } finally {
+    busy = false;
+  }
+});
+
+$("inp-candles").addEventListener("change", async () => {
+  if (busy || state?.runner?.running) return;
+  busy = true;
+  try {
+    const data = await api("/api/control/config", {
+      method: "POST",
+      body: JSON.stringify({ candles: Number($("inp-candles").value || 8) }),
+    });
+    paint(data.console);
+  } catch (err) {
+    alert(String(err.message || err));
+  } finally {
+    busy = false;
+  }
+});
+
 refresh();
-setInterval(refresh, 5000);
+setInterval(refresh, 3000);

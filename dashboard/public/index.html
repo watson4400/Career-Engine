@@ -7,83 +7,121 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Syne:wght@600;700;800&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@500;600;700&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <div class="atmosphere" aria-hidden="true"></div>
+
     <header class="top">
-      <div class="brand-block">
+      <div>
         <p class="brand">Career Engine</p>
-        <p class="tag">Ops console · Brain / Reflex</p>
+        <p class="tag">Reflex desk · one command, full control</p>
       </div>
       <div class="top-meta">
         <span id="clock" class="mono">—</span>
-        <span id="pulse" class="pulse" title="Auto-refresh">LIVE FEED</span>
+        <span id="run-pill" class="pill idle">IDLE</span>
       </div>
     </header>
 
     <main>
-      <section class="hero-status" aria-label="System status">
-        <div class="status-main">
-          <p class="eyebrow">Latest session</p>
-          <h1 id="latest-mode">—</h1>
-          <p id="latest-sub" class="sub">Waiting for session data…</p>
+      <section class="hero" aria-label="Decision desk">
+        <div class="hero-copy">
+          <p class="eyebrow" id="decision-tone">Next move</p>
+          <h1 id="decision-title">Loading console…</h1>
+          <p id="decision-detail" class="lede">Connecting to local ops server.</p>
+          <div class="cta-row">
+            <button type="button" id="btn-primary" class="btn primary">Run dry session</button>
+            <button type="button" id="btn-stop" class="btn ghost" hidden>Stop</button>
+          </div>
         </div>
-        <div class="status-grid">
-          <article class="stat">
-            <span class="stat-label">Live Coinbase equity</span>
-            <span id="stat-equity" class="stat-value mono">—</span>
-            <span id="stat-equity-sub" class="stat-sub mono">—</span>
-          </article>
-          <article class="stat stat-pnl">
-            <span class="stat-label">Session P&amp;L</span>
-            <span id="stat-pnl" class="stat-value mono">—</span>
-            <span id="stat-pnl-pct" class="stat-sub mono">—</span>
-          </article>
-          <article class="stat">
-            <span class="stat-label" id="stat-mid-label">Product mid</span>
-            <span id="stat-mid" class="stat-value mono">—</span>
-          </article>
-          <article class="stat">
-            <span class="stat-label">Orders / Holds</span>
-            <span id="stat-orders" class="stat-value mono">—</span>
-          </article>
+        <div class="hero-equity" aria-live="polite">
+          <p class="eyebrow">Live equity</p>
+          <p id="equity" class="equity mono">—</p>
+          <p id="equity-sub" class="mono sub">Waiting for Coinbase…</p>
+          <p id="mid-line" class="mono sub">—</p>
         </div>
       </section>
 
-      <section class="gates" aria-label="Safety gates">
-        <h2>Safety gates</h2>
-        <div class="gate-row" id="gates"></div>
+      <section class="controls" aria-label="Controls">
+        <div class="control-block">
+          <p class="control-label">Product</p>
+          <div id="products" class="product-row"></div>
+        </div>
+        <div class="control-block toggles">
+          <label class="toggle">
+            <input type="checkbox" id="tog-dry" checked />
+            <span>Dry-run</span>
+            <em>Simulated fills</em>
+          </label>
+          <label class="toggle">
+            <input type="checkbox" id="tog-kill" />
+            <span>Kill switch</span>
+            <em>Blocks new risk</em>
+          </label>
+          <label class="field">
+            <span>Candles</span>
+            <input type="number" id="inp-candles" min="1" max="60" value="8" />
+          </label>
+        </div>
+      </section>
+
+      <section class="strip" aria-label="Session snapshot">
+        <div>
+          <span class="stat-label">Mode</span>
+          <strong id="stat-mode" class="mono">—</strong>
+        </div>
+        <div>
+          <span class="stat-label">Session P&amp;L</span>
+          <strong id="stat-pnl" class="mono">—</strong>
+        </div>
+        <div>
+          <span class="stat-label">Orders / Holds</span>
+          <strong id="stat-orders" class="mono">—</strong>
+        </div>
+        <div>
+          <span class="stat-label">Dry sessions</span>
+          <strong id="stat-dry" class="mono">—</strong>
+        </div>
       </section>
 
       <div class="split">
-        <section aria-label="Sessions">
+        <section>
+          <div class="section-head">
+            <h2>Tape</h2>
+            <span id="tape-meta" class="mono muted">—</span>
+          </div>
+          <ol id="tape" class="tape"></ol>
+          <pre id="runner-log" class="runner-log mono" hidden></pre>
+        </section>
+        <section>
           <div class="section-head">
             <h2>Sessions</h2>
             <span id="session-count" class="mono muted">0</span>
           </div>
           <ul id="session-list" class="session-list"></ul>
         </section>
-
-        <section aria-label="Journal">
-          <div class="section-head">
-            <h2>Journal</h2>
-            <span id="journal-session" class="mono muted">—</span>
-          </div>
-          <ol id="journal" class="journal"></ol>
-        </section>
       </div>
     </main>
 
     <footer>
-      <p>
-        Local only · <span class="mono">npm run dashboard</span> ·
-        <span class="mono">npm run coinbase:live</span>
-      </p>
+      <p>Local only · <span class="mono">npm start</span> · never commit <span class="mono">.env</span></p>
     </footer>
+
+    <dialog id="live-dialog">
+      <form method="dialog" id="live-form">
+        <h3>Enable live orders?</h3>
+        <p>This turns dry-run off. Type <strong>LIVE</strong> to confirm.</p>
+        <input id="live-confirm" class="mono" autocomplete="off" placeholder="LIVE" />
+        <div class="cta-row">
+          <button value="cancel" class="btn ghost">Cancel</button>
+          <button value="ok" class="btn danger" id="live-ok">Enable live</button>
+        </div>
+      </form>
+    </dialog>
+
     <script type="module" src="/app.js"></script>
   </body>
 </html>

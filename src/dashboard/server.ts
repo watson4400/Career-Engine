@@ -1,8 +1,21 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
-import { join, extname, resolve } from "node:path";
+import { readFileSync, existsSync, readdirSync, statSync, writeFileSync, mkdirSync } from "node:fs";
+import { join, extname, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { exec } from "node:child_process";
 import dotenv from "dotenv";
+import { maxSpreadBpsForSymbol } from "../config/constants.js";
+import { schemaForProduct } from "../jev/schemas.js";
+import { KillSwitch } from "../risk/kill-switch.js";
+import { decideNext } from "./decide-next.js";
+import {
+  PRODUCT_OPTIONS,
+  envForOps,
+  loadOpsConfig,
+  saveOpsConfig,
+  type OpsConfig,
+} from "./ops-config.js";
+import { SessionRunner } from "./runner.js";
 
 const ROOT = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 dotenv.config({ path: join(ROOT, ".env") });
@@ -10,6 +23,7 @@ dotenv.config({ path: join(ROOT, ".env") });
 const PUBLIC = join(ROOT, "dashboard/public");
 const SESSIONS = join(ROOT, "data/sessions");
 const PORT = Number(process.env.DASHBOARD_PORT ?? 8787);
+const OPEN = process.env.OPS_OPEN !== "false";
 
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -18,6 +32,8 @@ const MIME: Record<string, string> = {
   ".svg": "image/svg+xml",
   ".json": "application/json",
 };
+
+const runner = new SessionRunner(ROOT);
 
 function send(res: ServerResponse, status: number, body: string, type = "application/json") {
   res.writeHead(status, {
@@ -39,6 +55,21 @@ function readJson(path: string): unknown | null {
   } catch {
     return null;
   }
+}
+
+async function readBody(req: IncomingMessage): Promise<unknown> {
+  const chunks: Buffer[] = [];
+  for await (const c of req) chunks.push(c as Buffer);
+  if (!chunks.length) return {};
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch {
+    return {};
+  }
+}
+
+function killPath(): string {
+  return process.env.KILL_SWITCH_PATH ?? join(SESSIONS, "kill-switch.json");
 }
 
 function listSessions() {
@@ -107,43 +138,27 @@ function journalTail(sessionId: string, limit = 40) {
   });
 }
 
-function statusPayload() {
-  const sessions = listSessions();
-  // Prefer newest Coinbase session for "latest" so paper 100k equity doesn't dominate the hero
-  const latestCb = sessions.find((s) => String(s.mode ?? "").includes("coinbase"));
-  const latest = latestCb ?? sessions[0] ?? null;
-  const killPath = process.env.KILL_SWITCH_PATH ?? join(SESSIONS, "kill-switch.json");
-  const kill = (readJson(killPath) as { armed?: boolean; reason?: string } | null) ?? {
-    armed: true,
-    reason: "default",
-  };
-
+function flagsFrom(cfg: OpsConfig) {
   return {
-    now: new Date().toISOString(),
-    flags: {
-      liveTrading: process.env.LIVE_TRADING === "true",
-      coinbaseDryRun: process.env.COINBASE_DRY_RUN !== "false",
-      hasTypesafe: Boolean(process.env.TYPESAFE_API_KEY?.trim()),
-      hasCoinbase: Boolean(
-        (process.env.COINBASE_API_KEY_ID ?? process.env.COINBASE_KEY_NAME)?.trim() &&
-          (process.env.COINBASE_API_KEY_SECRET ?? process.env.COINBASE_PRIVATE_KEY)?.trim(),
-      ),
-      productId: process.env.COINBASE_PRODUCT_ID ?? "BTC-USD",
-    },
-    killSwitch: {
-      armed: Boolean(kill.armed),
-      reason: kill.reason ?? null,
-    },
-    latest,
-    sessionCount: sessions.length,
+    liveTrading: cfg.liveTrading && !cfg.dryRun,
+    coinbaseDryRun: cfg.dryRun,
+    hasTypesafe: Boolean(process.env.TYPESAFE_API_KEY?.trim()),
+    hasCoinbase: Boolean(
+      (process.env.COINBASE_API_KEY_ID ?? process.env.COINBASE_KEY_NAME)?.trim() &&
+        (process.env.COINBASE_API_KEY_SECRET ?? process.env.COINBASE_PRIVATE_KEY)?.trim(),
+    ),
+    productId: cfg.productId,
+    schemaId: cfg.schemaId,
   };
 }
 
-/** Live Coinbase book + equity. "—" in the UI means this failed — not a $0 balance. */
-async function liveBookPayload(): Promise<Record<string, unknown>> {
+async function liveBookPayload(cfg: OpsConfig): Promise<Record<string, unknown>> {
   try {
     const { CoinbaseAdvancedClient } = await import("../exchange/coinbase/client.js");
-    const client = new CoinbaseAdvancedClient({ dryRun: true });
+    const client = new CoinbaseAdvancedClient({
+      dryRun: true,
+      productId: cfg.productId,
+    });
     const book = await client.getBestBidAsk();
     const mid = (book.bids[0]!.price + book.asks[0]!.price) / 2;
     const accounts = await client.listAccounts();
@@ -154,8 +169,9 @@ async function liveBookPayload(): Promise<Record<string, unknown>> {
     const liveInventory = accounts
       .filter((a) => a.currency === base)
       .reduce((s, a) => s + a.total, 0);
-    // Equity = stables + marked inventory of the configured product base (not BTC×alt mid).
     const liveEquity = cash + liveInventory * mid;
+    const spreadBps = ((book.asks[0]!.price - book.bids[0]!.price) / mid) * 10_000;
+    const maxSpread = maxSpreadBpsForSymbol(cfg.productId);
     return {
       ok: true,
       productId: client.productId,
@@ -163,7 +179,9 @@ async function liveBookPayload(): Promise<Record<string, unknown>> {
       mid,
       bid: book.bids[0]!.price,
       ask: book.asks[0]!.price,
-      spreadBps: ((book.asks[0]!.price - book.bids[0]!.price) / mid) * 10_000,
+      spreadBps,
+      maxSpreadBps: maxSpread,
+      spreadOk: spreadBps <= maxSpread,
       tsMs: book.tsMs,
       liveEquity,
       liveCash: cash,
@@ -186,6 +204,7 @@ async function liveBookPayload(): Promise<Record<string, unknown>> {
       ok: false,
       error: String((e as Error)?.message ?? e),
       liveEquity: null,
+      productId: cfg.productId,
       envLoaded: Boolean(
         (process.env.COINBASE_API_KEY_ID ?? process.env.COINBASE_KEY_NAME)?.trim(),
       ),
@@ -193,36 +212,154 @@ async function liveBookPayload(): Promise<Record<string, unknown>> {
   }
 }
 
+async function consolePayload() {
+  const config = loadOpsConfig(ROOT);
+  // Apply product to process env so nested helpers see it
+  Object.assign(process.env, envForOps(config));
+  const sessions = listSessions();
+  const latestCb = sessions.find((s) => String(s.mode ?? "").includes("coinbase"));
+  const latest = latestCb ?? sessions[0] ?? null;
+  const kill = new KillSwitch(killPath()).read();
+  const book = await liveBookPayload(config);
+  const flags = flagsFrom(config);
+  const drySessionCount = sessions.filter((s) => String(s.mode ?? "").includes("dry")).length;
+  const decision = decideNext({
+    config,
+    runner: runner.state(),
+    hasCoinbase: flags.hasCoinbase,
+    hasTypesafe: flags.hasTypesafe,
+    killArmed: Boolean(kill.armed),
+    killReason: kill.reason ?? null,
+    bookOk: book.ok === true,
+    bookError: typeof book.error === "string" ? book.error : null,
+    liveEquity: typeof book.liveEquity === "number" ? book.liveEquity : null,
+    spreadBps: typeof book.spreadBps === "number" ? book.spreadBps : null,
+    spreadOk: typeof book.spreadOk === "boolean" ? book.spreadOk : null,
+    drySessionCount,
+    productId: config.productId,
+  });
+
+  return {
+    now: new Date().toISOString(),
+    brand: "Career Engine",
+    config,
+    products: PRODUCT_OPTIONS.map((p) => ({
+      ...p,
+      schemaId: schemaForProduct(p.id).id,
+      thesis: schemaForProduct(p.id).thesis,
+    })),
+    flags,
+    killSwitch: { armed: Boolean(kill.armed), reason: kill.reason ?? null },
+    runner: runner.state(),
+    book,
+    decision,
+    latest,
+    sessions: sessions.slice(0, 30),
+    sessionCount: sessions.length,
+    drySessionCount,
+  };
+}
+
 async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL) {
-  if (url.pathname === "/api/status") {
-    const status = statusPayload();
-    // Attach live equity so a stale /api/book handler can't blank the hero
-    const book = await liveBookPayload();
-    return json(res, { ...status, book });
+  const method = (req.method ?? "GET").toUpperCase();
+
+  if (url.pathname === "/api/console" && method === "GET") {
+    return json(res, await consolePayload());
   }
-  if (url.pathname === "/api/sessions") {
+
+  // Back-compat for older UI / curls
+  if (url.pathname === "/api/status" && method === "GET") {
+    const c = await consolePayload();
+    return json(res, {
+      now: c.now,
+      flags: c.flags,
+      killSwitch: c.killSwitch,
+      latest: c.latest,
+      sessionCount: c.sessionCount,
+      book: c.book,
+      decision: c.decision,
+      runner: c.runner,
+      config: c.config,
+    });
+  }
+  if (url.pathname === "/api/sessions" && method === "GET") {
     return json(res, { sessions: listSessions() });
   }
   const one = url.pathname.match(/^\/api\/sessions\/([^/]+)$/);
-  if (one) {
+  if (one && method === "GET") {
     const id = decodeURIComponent(one[1]!);
     const dir = join(SESSIONS, id);
     if (!existsSync(dir)) return json(res, { error: "not found" }, 404);
     const summary = readJson(join(dir, "summary.json"));
     const overnight =
-      readJson(join(dir, `${id}.overnight.json`)) ??
-      readJson(join(dir, "overnight.json"));
+      readJson(join(dir, `${id}.overnight.json`)) ?? readJson(join(dir, "overnight.json"));
     const limit = Number(url.searchParams.get("limit") ?? 50);
-    return json(res, {
-      id,
-      summary,
-      overnight,
-      journal: journalTail(id, limit),
-    });
+    return json(res, { id, summary, overnight, journal: journalTail(id, limit) });
   }
-  if (url.pathname === "/api/book") {
-    return json(res, await liveBookPayload());
+  if (url.pathname === "/api/book" && method === "GET") {
+    const config = loadOpsConfig(ROOT);
+    return json(res, await liveBookPayload(config));
   }
+
+  if (url.pathname === "/api/control/config" && method === "POST") {
+    const body = (await readBody(req)) as Partial<OpsConfig> & { confirmLive?: string };
+    if (body.dryRun === false || body.liveTrading === true) {
+      if (body.confirmLive !== "LIVE") {
+        return json(
+          res,
+          { ok: false, error: 'Type confirmLive: "LIVE" to disable dry-run / enable live orders' },
+          400,
+        );
+      }
+      body.dryRun = false;
+      body.liveTrading = true;
+    }
+    if (body.productId) {
+      body.schemaId = schemaForProduct(body.productId).id;
+    }
+    const config = saveOpsConfig(ROOT, body);
+    Object.assign(process.env, envForOps(config));
+    return json(res, { ok: true, config, console: await consolePayload() });
+  }
+
+  if (url.pathname === "/api/control/kill" && method === "POST") {
+    const body = (await readBody(req)) as { armed?: boolean; reason?: string };
+    const ks = new KillSwitch(killPath());
+    if (body.armed) ks.arm(body.reason?.trim() || "operator-armed");
+    else ks.disarm(body.reason?.trim() || "operator-disarmed");
+    return json(res, { ok: true, killSwitch: ks.read(), console: await consolePayload() });
+  }
+
+  if (url.pathname === "/api/control/run" && method === "POST") {
+    const body = (await readBody(req)) as Partial<OpsConfig> & { confirmLive?: string };
+    let config = loadOpsConfig(ROOT);
+    if (body.productId || body.candles || body.intervalMs) {
+      config = saveOpsConfig(ROOT, body);
+    }
+    if (!config.dryRun && config.liveTrading && body.confirmLive !== "LIVE") {
+      return json(res, { ok: false, error: 'Live run requires confirmLive: "LIVE"' }, 400);
+    }
+    // Ensure kill file exists
+    mkdirSync(dirname(killPath()), { recursive: true });
+    if (!existsSync(killPath())) {
+      writeFileSync(
+        killPath(),
+        JSON.stringify(
+          { armed: false, reason: "ops-console-ready", updatedAt: new Date().toISOString() },
+          null,
+          2,
+        ),
+      );
+    }
+    const state = runner.start(config);
+    return json(res, { ok: state.running, runner: state, console: await consolePayload() });
+  }
+
+  if (url.pathname === "/api/control/stop" && method === "POST") {
+    const state = runner.stop();
+    return json(res, { ok: true, runner: state, console: await consolePayload() });
+  }
+
   return json(res, { error: "not found" }, 404);
 }
 
@@ -250,7 +387,34 @@ const server = createServer(async (req, res) => {
   }
 });
 
+function openBrowser(url: string) {
+  if (!OPEN) return;
+  const cmd =
+    process.platform === "darwin"
+      ? `open "${url}"`
+      : process.platform === "win32"
+        ? `start "" "${url}"`
+        : `xdg-open "${url}"`;
+  exec(cmd, () => undefined);
+}
+
+server.on("error", (err: NodeJS.ErrnoException) => {
+  if (err.code === "EADDRINUSE") {
+    console.error(`\nPort ${PORT} is busy. Run:\n  kill $(lsof -t -i:${PORT})\n  npm start\n`);
+    process.exit(1);
+  }
+  throw err;
+});
+
 server.listen(PORT, "127.0.0.1", () => {
-  console.log(`Dashboard → http://127.0.0.1:${PORT}`);
-  console.log("Local only. Ctrl+C to stop.");
+  const url = `http://127.0.0.1:${PORT}`;
+  // Seed ops config once
+  loadOpsConfig(ROOT);
+  saveOpsConfig(ROOT, loadOpsConfig(ROOT));
+  console.log("");
+  console.log("  Career Engine — Ops Console");
+  console.log(`  ${url}`);
+  console.log("  Local only · Ctrl+C to stop");
+  console.log("");
+  openBrowser(url);
 });

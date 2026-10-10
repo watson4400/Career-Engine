@@ -4,6 +4,8 @@
   "description": "24/7 autonomous crypto trading agent: Brain (Opus) + Reflex (Jev) via Agenkit discipline",
   "type": "module",
   "scripts": {
+    "start": "tsx src/dashboard/server.ts",
+    "ops": "tsx src/dashboard/server.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
