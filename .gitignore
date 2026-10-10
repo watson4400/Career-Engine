@@ -5,6 +5,7 @@ dist/
 !.env.example
 data/sessions/**
 !data/sessions/.gitkeep
+data/ops-config.json
 .agenkit/memory/codemap.json
 .agenkit/memory/manifest.json
 *.log
