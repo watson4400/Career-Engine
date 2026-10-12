@@ -29,42 +29,42 @@ export function decideNext(ctx: DecisionContext): NextDecision {
   if (!ctx.hasCoinbase) {
     return {
       tone: "warn",
-      title: "Connect Coinbase keys",
-      detail: "Put COINBASE_API_KEY_ID + COINBASE_API_KEY_SECRET in .env, then refresh. No trading until doctor can see balances.",
+      title: "Add Coinbase keys",
+      detail: "Drop API id + secret into .env, then retry. Balances unlock the desk.",
       primaryAction: "fix_keys",
     };
   }
   if (!ctx.bookOk) {
     return {
       tone: "warn",
-      title: "Book not loaded",
+      title: "Book unreachable",
       detail: ctx.bookError
-        ? `Coinbase error: ${ctx.bookError.slice(0, 140)}`
-        : "Waiting on Coinbase. Check keys / network, then refresh.",
+        ? ctx.bookError.slice(0, 120)
+        : "Check keys and network, then retry.",
       primaryAction: "fix_keys",
     };
   }
   if (ctx.runner.running) {
     return {
       tone: "go",
-      title: "Session running — watch the tape",
-      detail: `${ctx.productId} · ${ctx.config.dryRun ? "dry-run (no real orders)" : "LIVE ORDERS"} · stop anytime.`,
+      title: "Session live",
+      detail: `${ctx.productId} · ${ctx.config.dryRun ? "dry-run" : "LIVE ORDERS"} · watch the tape.`,
       primaryAction: "stop",
     };
   }
   if (ctx.config.liveTrading && !ctx.config.dryRun) {
     return {
       tone: "danger",
-      title: "Live orders armed",
-      detail: "Dry-run is OFF. Only Run if you intend real fills. Prefer flipping Dry-run back on.",
+      title: "Live orders on",
+      detail: "Dry-run is off. Run only if you want real fills.",
       primaryAction: "run",
     };
   }
   if (ctx.killArmed && ctx.killReason?.startsWith("max_")) {
     return {
       tone: "danger",
-      title: "Risk kill tripped",
-      detail: `Armed: ${ctx.killReason}. Review PnL, then disarm only if you accept more risk.`,
+      title: "Kill tripped",
+      detail: ctx.killReason + ". Review, then disarm if you accept more risk.",
       primaryAction: "disarm_kill",
     };
   }
@@ -72,15 +72,15 @@ export function decideNext(ctx: DecisionContext): NextDecision {
     return {
       tone: "wait",
       title: "Spread too wide",
-      detail: `${ctx.productId} spread ${ctx.spreadBps?.toFixed?.(1) ?? "?"} bps. Switch product or wait — don't force size.`,
+      detail: `${ctx.productId} at ${ctx.spreadBps?.toFixed?.(1) ?? "?"} bps. Switch product or wait.`,
       primaryAction: "none",
     };
   }
   if (ctx.liveEquity != null && ctx.liveEquity < 50) {
     return {
       tone: "warn",
-      title: "Equity looks too small",
-      detail: `Live equity ${ctx.liveEquity.toFixed(2)}. Fund USDC or verify balances before running.`,
+      title: "Equity too thin",
+      detail: `Showing $${ctx.liveEquity.toFixed(2)}. Fund USDC before you run.`,
       primaryAction: "none",
     };
   }
@@ -88,22 +88,22 @@ export function decideNext(ctx: DecisionContext): NextDecision {
     return {
       tone: "go",
       title: "Run a dry session",
-      detail: `${ctx.productId} · equity ${ctx.liveEquity != null ? `$${ctx.liveEquity.toFixed(0)}` : "ready"} · build ${3 - ctx.drySessionCount} more clean dry-runs before thinking about live.`,
+      detail: `${ctx.productId}${ctx.liveEquity != null ? ` · $${ctx.liveEquity.toFixed(0)}` : ""} · ${3 - ctx.drySessionCount} more dry-runs before live.`,
       primaryAction: "run",
     };
   }
   if (!ctx.hasTypesafe) {
     return {
       tone: "wait",
-      title: "Dry-runs OK — add Jev key for live judgment",
-      detail: "Paper-trainer can drive dry-runs. Set TYPESAFE_API_KEY for real Jev decisions.",
+      title: "Add Jev key",
+      detail: "Dry-runs work on paper-trainer. Set TYPESAFE_API_KEY for live judgment.",
       primaryAction: "run",
     };
   }
   return {
     tone: "go",
-    title: "Ready — keep dry-running",
-    detail: `${ctx.drySessionCount} dry sessions on file. Stay on dry-run; use Stop if tape looks wrong.`,
+    title: "Keep dry-running",
+    detail: `${ctx.drySessionCount} dry sessions logged. Stay dry; stop if tape looks wrong.`,
     primaryAction: "run",
   };
 }

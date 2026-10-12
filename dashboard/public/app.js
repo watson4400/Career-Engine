@@ -27,11 +27,6 @@ function fmtPnl(n) {
   return `${sign}${fmtMoney(Math.abs(v))}`;
 }
 
-function pnlClass(n) {
-  if (n == null || Number.isNaN(Number(n)) || Number(n) === 0) return "";
-  return Number(n) > 0 ? "up" : "down";
-}
-
 function sessionPnl(s) {
   const summary = s.summary ?? s;
   const result = summary?.result ?? summary;
@@ -86,11 +81,6 @@ function renderProducts(consoleData) {
 
 function renderDecision(consoleData) {
   const d = consoleData.decision;
-  const hero = document.querySelector(".hero-copy");
-  hero.classList.remove("tone-go", "tone-wait", "tone-warn", "tone-danger");
-  hero.classList.add(`tone-${d.tone}`);
-  $("decision-tone").textContent =
-    d.tone === "go" ? "Go" : d.tone === "danger" ? "Risk" : d.tone === "warn" ? "Blocked" : "Wait";
   $("decision-title").textContent = d.title;
   $("decision-detail").textContent = d.detail;
 
@@ -106,11 +96,11 @@ function renderDecision(consoleData) {
     primary.hidden = false;
     if (d.primaryAction === "run") {
       primary.textContent = consoleData.config.dryRun ? "Run dry session" : "Run LIVE session";
-      primary.className = "btn " + (consoleData.config.dryRun ? "primary" : "danger");
+      primary.className = "btn primary" + (consoleData.config.dryRun ? "" : " warn");
       primary.disabled = false;
       primary.onclick = () => controlRun();
     } else if (d.primaryAction === "disarm_kill") {
-      primary.textContent = "Disarm kill switch";
+      primary.textContent = "Disarm kill";
       primary.className = "btn primary";
       primary.disabled = false;
       primary.onclick = () => setKill(false);
@@ -120,8 +110,8 @@ function renderDecision(consoleData) {
       primary.disabled = false;
       primary.onclick = () => refresh();
     } else {
-      primary.textContent = "Waiting…";
-      primary.className = "btn ghost";
+      primary.textContent = "Waiting";
+      primary.className = "btn secondary";
       primary.disabled = true;
       primary.onclick = null;
     }
@@ -130,53 +120,39 @@ function renderDecision(consoleData) {
 
 function renderEquity(consoleData) {
   const book = consoleData.book;
+  const plane = $("equity-plane");
+  const caption = $("equity-caption");
   if (book?.ok && book.liveEquity != null) {
     lastEquity = book.liveEquity;
-    $("equity").textContent = `$${fmtMoney(book.liveEquity)}`;
+    const money = fmtMoney(book.liveEquity);
+    plane.textContent = `$${money}`;
+    $("equity").textContent = money;
     const bal = (book.balances || [])
       .map((b) => `${b.currency} ${fmtMoney(b.total ?? b.available)}`)
       .join(" · ");
-    $("equity-sub").textContent = bal || `cash $${fmtMoney(book.liveCash)}`;
+    caption.textContent = bal
+      ? `Live · ${bal}`
+      : `Live equity · $${money}`;
     const spread =
       book.spreadBps != null
-        ? `spread ${Number(book.spreadBps).toFixed(1)} bps${book.spreadOk === false ? " · wide" : ""}`
+        ? ` · spread ${Number(book.spreadBps).toFixed(1)} bps${book.spreadOk === false ? " wide" : ""}`
         : "";
-    $("mid-line").textContent = `${book.productId} mid $${fmtMoney(book.mid)}${spread ? " · " + spread : ""}`;
+    $("mid-line").textContent = `${book.productId} · $${fmtMoney(book.mid)}${spread}`;
+    $("equity-sub").textContent = bal || "";
   } else if (lastEquity != null) {
-    $("equity").textContent = `$${fmtMoney(lastEquity)}`;
-    $("equity-sub").textContent = book?.error
-      ? `stale · ${String(book.error).slice(0, 70)}`
-      : "stale · last good (not $0)";
+    plane.textContent = `$${fmtMoney(lastEquity)}`;
+    caption.textContent = book?.error
+      ? `Stale · ${String(book.error).slice(0, 70)}`
+      : "Stale · last good (not $0)";
     $("mid-line").textContent = "—";
   } else {
-    $("equity").textContent = "—";
-    $("equity-sub").textContent = book?.error
-      ? `not loaded · ${String(book.error).slice(0, 80)}`
-      : "not loaded · not $0";
+    // Avoid a lone em-dash at display size (reads as a thin bar)
+    plane.textContent = "$···";
+    caption.textContent = book?.error
+      ? `Not loaded · ${String(book.error).slice(0, 80)}`
+      : "Not loaded · not $0";
     $("mid-line").textContent = "—";
   }
-}
-
-function renderStrip(consoleData) {
-  const latest = consoleData.latest;
-  const running = consoleData.runner?.running;
-  $("stat-mode").textContent = running
-    ? consoleData.config.dryRun
-      ? "dry-run · live"
-      : "LIVE · running"
-    : latest?.mode ?? "idle";
-  if (latest) {
-    const { pnlUsd, pnlPct } = sessionPnl(latest);
-    const el = $("stat-pnl");
-    el.textContent = `${fmtPnl(pnlUsd)} (${fmtPct(pnlPct)})`;
-    el.className = `mono ${pnlClass(pnlUsd ?? pnlPct)}`;
-    $("stat-orders").textContent = `${latest.orders ?? "—"} / ${latest.holds ?? "—"}`;
-  } else {
-    $("stat-pnl").textContent = "—";
-    $("stat-pnl").className = "mono";
-    $("stat-orders").textContent = "—";
-  }
-  $("stat-dry").textContent = String(consoleData.drySessionCount ?? 0);
 }
 
 function renderSessions(consoleData) {
@@ -184,7 +160,7 @@ function renderSessions(consoleData) {
   $("session-count").textContent = String(consoleData.sessionCount ?? sessions.length);
   const ul = $("session-list");
   ul.innerHTML = "";
-  for (const s of sessions.slice(0, 24)) {
+  for (const s of sessions.slice(0, 20)) {
     const li = document.createElement("li");
     if (s.id === selectedId) li.classList.add("active");
     const { pnlUsd, pnlPct } = sessionPnl(s);
@@ -242,15 +218,6 @@ function syncControls(consoleData) {
   candles.value = String(consoleData.config.candles ?? 8);
   dry.disabled = Boolean(consoleData.runner?.running);
   candles.disabled = Boolean(consoleData.runner?.running);
-
-  const pill = $("run-pill");
-  if (consoleData.runner?.running) {
-    pill.textContent = consoleData.config.dryRun ? "RUNNING" : "LIVE";
-    pill.className = "pill " + (consoleData.config.dryRun ? "run" : "live");
-  } else {
-    pill.textContent = "IDLE";
-    pill.className = "pill idle";
-  }
   $("clock").textContent = new Date(consoleData.now).toLocaleString();
 }
 
@@ -259,7 +226,6 @@ function paint(consoleData) {
   renderProducts(consoleData);
   renderDecision(consoleData);
   renderEquity(consoleData);
-  renderStrip(consoleData);
   renderSessions(consoleData);
   renderRunnerLog(consoleData);
   syncControls(consoleData);
@@ -357,19 +323,15 @@ $("tog-dry").addEventListener("change", async (e) => {
     }
     return;
   }
-  // turning dry-run off → confirm LIVE
   e.target.checked = true;
-  const dialog = $("live-dialog");
   $("live-confirm").value = "";
-  dialog.showModal();
+  $("live-dialog").showModal();
 });
 
 $("live-form").addEventListener("close", async () => {
-  const dialog = $("live-dialog");
-  if (dialog.returnValue !== "ok") return;
-  const typed = $("live-confirm").value.trim();
-  if (typed !== "LIVE") {
-    alert('Type LIVE exactly to enable live orders.');
+  if ($("live-dialog").returnValue !== "ok") return;
+  if ($("live-confirm").value.trim() !== "LIVE") {
+    alert("Type LIVE exactly to enable live orders.");
     return;
   }
   busy = true;

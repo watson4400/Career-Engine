@@ -3,124 +3,102 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Career Engine — Ops</title>
+    <title>Career Engine</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <div class="atmosphere" aria-hidden="true"></div>
+    <div class="atmosphere" aria-hidden="true">
+      <div class="wash"></div>
+      <div class="band"></div>
+      <div class="grain"></div>
+    </div>
 
-    <header class="top">
-      <div>
-        <p class="brand">Career Engine</p>
-        <p class="tag">Reflex desk · one command, full control</p>
+    <section class="stage" aria-label="Career Engine">
+      <div class="stage-copy">
+        <p class="brand">Career<br />Engine</p>
+        <h1 id="decision-title">Loading…</h1>
+        <p id="decision-detail" class="support">Starting local console.</p>
+        <div class="cta-row">
+          <button type="button" id="btn-primary" class="btn primary">Run dry session</button>
+          <button type="button" id="btn-stop" class="btn secondary" hidden>Stop</button>
+        </div>
       </div>
-      <div class="top-meta">
-        <span id="clock" class="mono">—</span>
-        <span id="run-pill" class="pill idle">IDLE</span>
+      <div class="stage-visual" aria-live="polite">
+        <p class="visual-label">Live equity</p>
+        <p id="equity-plane" class="equity-plane mono">$···</p>
+        <p id="equity-caption" class="caption mono">Connecting…</p>
       </div>
-    </header>
+    </section>
 
-    <main>
-      <section class="hero" aria-label="Decision desk">
-        <div class="hero-copy">
-          <p class="eyebrow" id="decision-tone">Next move</p>
-          <h1 id="decision-title">Loading console…</h1>
-          <p id="decision-detail" class="lede">Connecting to local ops server.</p>
-          <div class="cta-row">
-            <button type="button" id="btn-primary" class="btn primary">Run dry session</button>
-            <button type="button" id="btn-stop" class="btn ghost" hidden>Stop</button>
-          </div>
-        </div>
-        <div class="hero-equity" aria-live="polite">
-          <p class="eyebrow">Live equity</p>
-          <p id="equity" class="equity mono">—</p>
-          <p id="equity-sub" class="mono sub">Waiting for Coinbase…</p>
-          <p id="mid-line" class="mono sub">—</p>
-        </div>
-      </section>
-
-      <section class="controls" aria-label="Controls">
-        <div class="control-block">
-          <p class="control-label">Product</p>
-          <div id="products" class="product-row"></div>
-        </div>
-        <div class="control-block toggles">
-          <label class="toggle">
-            <input type="checkbox" id="tog-dry" checked />
-            <span>Dry-run</span>
-            <em>Simulated fills</em>
-          </label>
-          <label class="toggle">
-            <input type="checkbox" id="tog-kill" />
-            <span>Kill switch</span>
-            <em>Blocks new risk</em>
-          </label>
-          <label class="field">
-            <span>Candles</span>
-            <input type="number" id="inp-candles" min="1" max="60" value="8" />
-          </label>
-        </div>
-      </section>
-
-      <section class="strip" aria-label="Session snapshot">
-        <div>
-          <span class="stat-label">Mode</span>
-          <strong id="stat-mode" class="mono">—</strong>
-        </div>
-        <div>
-          <span class="stat-label">Session P&amp;L</span>
-          <strong id="stat-pnl" class="mono">—</strong>
-        </div>
-        <div>
-          <span class="stat-label">Orders / Holds</span>
-          <strong id="stat-orders" class="mono">—</strong>
-        </div>
-        <div>
-          <span class="stat-label">Dry sessions</span>
-          <strong id="stat-dry" class="mono">—</strong>
-        </div>
-      </section>
-
-      <div class="split">
-        <section>
-          <div class="section-head">
-            <h2>Tape</h2>
-            <span id="tape-meta" class="mono muted">—</span>
-          </div>
-          <ol id="tape" class="tape"></ol>
-          <pre id="runner-log" class="runner-log mono" hidden></pre>
-        </section>
-        <section>
-          <div class="section-head">
-            <h2>Sessions</h2>
-            <span id="session-count" class="mono muted">0</span>
-          </div>
-          <ul id="session-list" class="session-list"></ul>
-        </section>
+    <section class="instrument" aria-label="Instrument">
+      <h2>Instrument</h2>
+      <p class="section-support">Pick the book. Dry-run stays on until you type LIVE.</p>
+      <div id="products" class="product-row"></div>
+      <div class="switches">
+        <label class="switch">
+          <input type="checkbox" id="tog-dry" checked />
+          <span>Dry-run</span>
+        </label>
+        <label class="switch">
+          <input type="checkbox" id="tog-kill" />
+          <span>Kill</span>
+        </label>
+        <label class="switch candles">
+          <span>Candles</span>
+          <input type="number" id="inp-candles" min="1" max="60" value="8" />
+        </label>
       </div>
-    </main>
+      <p id="mid-line" class="caption mono">—</p>
+    </section>
+
+    <section class="activity" aria-label="Tape">
+      <div class="section-head">
+        <h2>Tape</h2>
+        <span id="tape-meta" class="caption mono">—</span>
+      </div>
+      <ol id="tape" class="tape"></ol>
+      <pre id="runner-log" class="runner-log mono" hidden></pre>
+    </section>
+
+    <section class="history" aria-label="Sessions">
+      <div class="section-head">
+        <h2>Sessions</h2>
+        <span id="session-count" class="caption mono">0</span>
+      </div>
+      <ul id="session-list" class="session-list"></ul>
+    </section>
 
     <footer>
-      <p>Local only · <span class="mono">npm start</span> · never commit <span class="mono">.env</span></p>
+      <p class="caption mono">npm start · 127.0.0.1 only</p>
     </footer>
 
     <dialog id="live-dialog">
       <form method="dialog" id="live-form">
-        <h3>Enable live orders?</h3>
-        <p>This turns dry-run off. Type <strong>LIVE</strong> to confirm.</p>
+        <p class="brand-sm">Career Engine</p>
+        <h3>Enable live orders</h3>
+        <p class="support">Turns dry-run off. Type LIVE to confirm.</p>
         <input id="live-confirm" class="mono" autocomplete="off" placeholder="LIVE" />
         <div class="cta-row">
-          <button value="cancel" class="btn ghost">Cancel</button>
-          <button value="ok" class="btn danger" id="live-ok">Enable live</button>
+          <button value="cancel" class="btn secondary">Cancel</button>
+          <button value="ok" class="btn primary warn">Enable live</button>
         </div>
       </form>
     </dialog>
+
+    <span id="clock" hidden></span>
+    <span id="run-pill" hidden></span>
+    <span id="equity" hidden></span>
+    <span id="equity-sub" hidden></span>
+    <span id="stat-mode" hidden></span>
+    <span id="stat-pnl" hidden></span>
+    <span id="stat-orders" hidden></span>
+    <span id="stat-dry" hidden></span>
 
     <script type="module" src="/app.js"></script>
   </body>

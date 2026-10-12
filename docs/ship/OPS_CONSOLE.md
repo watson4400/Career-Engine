@@ -2,6 +2,8 @@
 
 Forget juggling Terminal tabs. The console is the product.
 
+First screen is one composition: **Career Engine**, the next decision, one CTA, and live equity as the visual. Instrument / tape / sessions sit below.
+
 ## Run
 
 ```bash
@@ -24,15 +26,13 @@ npm start
 
 | Control | Does |
 | --- | --- |
-| **Run dry session** | Starts the Coinbase loop (simulated fills while Dry-run is on) |
-| **Stop** | Kills the running session |
-| **Product** | BTC / SOL / LINK / AAVE / NEAR — schema maps automatically |
+| **Primary CTA** | Run / Stop / Retry / Disarm — driven by the decision engine |
+| **Instrument** | Product (BTC / SOL / LINK / AAVE / NEAR), dry-run, kill, candles |
 | **Dry-run** | On = no real orders. Off requires typing `LIVE` |
-| **Kill switch** | Blocks new risk; flatten path still armed in the loop |
-| **Candles** | How long each Run lasts |
-| **Decision strip** | One clear next move based on keys, equity, spread, sessions |
+| **Kill** | Blocks new risk; flatten path still armed in the loop |
+| **Tape / Sessions** | Journal + history below the fold |
 
-Live equity, mid, spread, tape, and sessions refresh every few seconds.
+Equity, mid, spread, and tape refresh every few seconds.
 
 ## Safety
 

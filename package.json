@@ -4,15 +4,15 @@
   "description": "24/7 autonomous crypto trading agent: Brain (Opus) + Reflex (Jev) via Agenkit discipline",
   "type": "module",
   "scripts": {
-    "start": "tsx src/dashboard/server.ts",
-    "ops": "tsx src/dashboard/server.ts",
+    "start": "node ./node_modules/tsx/dist/cli.mjs src/dashboard/server.ts",
+    "ops": "node ./node_modules/tsx/dist/cli.mjs src/dashboard/server.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "paper": "tsx src/cli/paper.ts",
     "coinbase:doctor": "tsx src/cli/coinbase-doctor.ts",
     "coinbase:live": "tsx src/cli/live-coinbase.ts",
-    "dashboard": "tsx src/dashboard/server.ts",
+    "dashboard": "node ./node_modules/tsx/dist/cli.mjs src/dashboard/server.ts",
     "approve-gate": "tsx src/cli/approve-gate.ts",
     "build": "tsc -p tsconfig.json"
   },
